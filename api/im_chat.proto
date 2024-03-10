@@ -1,0 +1,106 @@
+syntax="proto3";
+
+//this is the app's name,all proto in this app must use this name as the proto package name
+package im;
+//this is the golang's package name,all proto in this project must use this name as the golang's package name
+option go_package="github.com/chenjie199234/im/api;api";
+//https://github.com/chenjie199234/Corelib/blob/main/pbex/pbex.proto
+import "pbex/pbex.proto";
+
+//this is the proto file for chat service
+service chat{
+	//rpc example(examplereq)returns(exampleresp){
+	//	option (pbex.method)="get";//can be set to get,delete,post,put,patch
+	//	option (pbex.web_midwares)="b";
+	//	option (pbex.web_midwares)="c";
+	//	option (pbex.web_midwares)="a";//this function on web protocol has 3 midwares,it's order is b,c,a
+	//	option (pbex.crpc_midwares)="b";
+	//	option (pbex.crpc_midwares)="c";
+	//	option (pbex.crpc_midwares)="a";//this function on crpc protocol has 3 midwares,it's order is b,c,a
+	//	option (pbex.cgrpc_midwares)="b";
+	//	option (pbex.cgrpc_midwares)="c";
+	//	option (pbex.cgrpc_midwares)="a";//this function on grpc protocol has 3 midwares,it's order is b,c,a
+	//}
+
+	//send a msg
+	rpc send(send_req)returns(send_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	//recall a msg send by self
+	rpc recall(recall_req)returns(recall_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	//already read the msg send by other(self's msg don't need to ack)
+	rpc ack(ack_req)returns(ack_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	//get more msgs and recalls
+	rpc pull(pull_req)returns(pull_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+}
+//req can be set with pbex extentions
+//message examplereq{
+	//int64 example_for_extentions=1[(pbex.int_gt)=1,(pbex.int_lt)=100];
+//}
+//resp's pbex extentions will be ignore
+//message exampleresp{
+	//int64 example_resp=1;
+//}
+
+message send_req{
+	string target=1[(pbex.string_bytes_len_gt)=0];
+	string target_type=2[(pbex.string_bytes_in)="user",(pbex.string_bytes_in)="group"];
+	string msg=3[(pbex.string_bytes_len_gt)=0];
+	string extra=4;
+}
+message send_resp{
+	//msg index start from 1
+	uint64 msg_index=1;
+	//unit: nanosecond
+	uint64 timestamp=2;
+}
+message recall_req{
+	string target=1[(pbex.string_bytes_len_gt)=0];
+	string target_type=2[(pbex.string_bytes_in)="user",(pbex.string_bytes_in)="group"];
+	uint64 msg_index=3;
+}
+message recall_resp{
+	uint64 recall_index=1;
+}
+message ack_req{
+	string target=1[(pbex.string_bytes_len_gt)=0];
+	string target_type=2[(pbex.string_bytes_in)="user",(pbex.string_bytes_in)="group"];
+	uint64 msg_index=3;
+}
+message ack_resp{
+}
+message msg_info{
+	//msg index start from 1
+	uint64 msg_index=1;
+	//recall index start 1,0 means didn't recall
+	uint64 recall_index=2;
+	string msg=3;
+	string extra=4;
+	uint64 timestamp=5;
+	string sender=6;
+	string target=7;
+	string target_type=8;
+}
+message pull_req{
+	string target=1[(pbex.string_bytes_len_gt)=0];
+	string target_type=2[(pbex.string_bytes_in)="user",(pbex.string_bytes_in)="group"];
+	string direction=3[(pbex.string_bytes_in)="before",(pbex.string_bytes_in)="after"];
+	//the response will include this index
+	uint64 start_msg_index=4;//if this is 0,means don't need to pull the msgs
+	uint64 start_recall_index=5;//if this is 0,means don't need to pull the recalls
+	uint64 count=6[(pbex.uint_gt)=0,(pbex.uint_lte)=50];
+}
+message pull_resp{
+	repeated msg_info msgs=1;
+	map<uint64,uint64> recalls=2;
+}

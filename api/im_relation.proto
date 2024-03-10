@@ -1,0 +1,216 @@
+syntax="proto3";
+
+//this is the app's name,all proto in this app must use this name as the proto package name
+package im;
+//this is the golang's package name,all proto in this project must use this name as the golang's package name
+option go_package="github.com/chenjie199234/im/api;api";
+//https://github.com/chenjie199234/Corelib/blob/main/pbex/pbex.proto
+import "pbex/pbex.proto";
+
+//this is the proto file for relation service
+service relation{
+	//rpc example(examplereq)returns(exampleresp){
+	//	option (pbex.method)="get";//can be set to get,delete,post,put,patch
+	//	option (pbex.web_midwares)="b";
+	//	option (pbex.web_midwares)="c";
+	//	option (pbex.web_midwares)="a";//this function on web protocol has 3 midwares,it's order is b,c,a
+	//	option (pbex.crpc_midwares)="b";
+	//	option (pbex.crpc_midwares)="c";
+	//	option (pbex.crpc_midwares)="a";//this function on crpc protocol has 3 midwares,it's order is b,c,a
+	//	option (pbex.cgrpc_midwares)="b";
+	//	option (pbex.cgrpc_midwares)="c";
+	//	option (pbex.cgrpc_midwares)="a";//this function on grpc protocol has 3 midwares,it's order is b,c,a
+	//}
+
+	// user a -> request -> user b(wait user b to do action:accept or refuse)
+	rpc make_friend(make_friend_req)returns(make_friend_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc accept_make_friend(accept_make_friend_req)returns(accept_make_friend_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc refuse_make_friend(refuse_make_friend_req)returns(refuse_make_friend_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	// group's admin represent group -> request -> user(wait user to do action:accept or refuse)
+	rpc group_invite(group_invite_req)returns(group_invite_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc accept_group_invite(accept_group_invite_req)returns(accept_group_invite_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc refuse_group_invite(refuse_group_invite_req)returns(refuse_group_invite_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	// user -> request join -> group(wait group's admin to do action:accept or refuse)
+	rpc group_apply(group_apply_req)returns(group_apply_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc accept_group_apply(accept_group_apply_req)returns(accept_group_apply_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc refuse_group_apply(refuse_group_apply_req)returns(refuse_group_apply_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc del_friend(del_friend_req)returns(del_friend_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc leave_group(leave_group_req)returns(leave_group_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc kick_group(kick_group_req)returns(kick_group_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc relations(relations_req)returns(relations_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc group_members(group_members_req)returns(group_members_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc update_user_relation_name(update_user_relation_name_req)returns(update_user_relation_name_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc update_name_in_group(update_name_in_group_req)returns(update_name_in_group_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc update_duty_in_group(update_duty_in_group_req)returns(update_duty_in_group_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+}
+//req can be set with pbex extentions
+//message examplereq{
+	//int64 example_for_extentions=1[(pbex.int_gt)=1,(pbex.int_lt)=100];
+//}
+//resp's pbex extentions will be ignore
+//message exampleresp{
+	//int64 example_resp=1;
+//}
+
+message make_friend_req{
+	string user_id=1[(pbex.string_bytes_len_eq)=24];
+}
+message make_friend_resp{
+}
+message accept_make_friend_req{
+	string user_id=1[(pbex.string_bytes_len_eq)=24];
+}
+message accept_make_friend_resp{
+}
+message refuse_make_friend_req{
+	string user_id=1[(pbex.string_bytes_len_eq)=24];
+}
+message refuse_make_friend_resp{
+}
+
+message group_invite_req{
+	string group_id=1[(pbex.string_bytes_len_eq)=24];
+	string user_id=2[(pbex.string_bytes_len_eq)=24];
+}
+message group_invite_resp{
+}
+message accept_group_invite_req{
+	string group_id=1[(pbex.string_bytes_len_eq)=24];
+}
+message accept_group_invite_resp{
+}
+message refuse_group_invite_req{
+	string group_id=1[(pbex.string_bytes_len_eq)=24];
+}
+message refuse_group_invite_resp{
+}
+
+message group_apply_req{
+	string group_id=1[(pbex.string_bytes_len_eq)=24];
+}
+message group_apply_resp{
+}
+message accept_group_apply_req{
+	string group_id=1[(pbex.string_bytes_len_eq)=24];
+	string user_id=2[(pbex.string_bytes_len_eq)=24];
+}
+message accept_group_apply_resp{
+}
+message refuse_group_apply_req{
+	string group_id=1[(pbex.string_bytes_len_eq)=24];
+	string user_id=2[(pbex.string_bytes_len_eq)=24];
+}
+message refuse_group_apply_resp{
+}
+
+message del_friend_req{
+	string user_id=1[(pbex.string_bytes_len_eq)=24];
+}
+message del_friend_resp{
+}
+message leave_group_req{
+	string group_id=1[(pbex.string_bytes_len_eq)=24];
+}
+message leave_group_resp{
+}
+message kick_group_req{
+	string group_id=1[(pbex.string_bytes_len_eq)=24];
+	string user_id=2[(pbex.string_bytes_len_eq)=24];
+}
+message kick_group_resp{
+}
+
+message relation_info{
+	string target=1;
+	string target_type=2;//user or group
+	string name=3;
+	uint32 duty=4;//only when the group's member use this field,0-normal,1-system owner,2-owner,3-admin
+}
+message relations_req{
+	//hex(sha256(join(sort(["user_"+userid1+"_"+name,"group_"+groupid1+"_"+name,"user_"+userid2+"_"+name]),",")))
+	string current_hash=1[(pbex.string_bytes_len_eq)=64];
+}
+message relations_resp{
+	bool update=1;//if the current_hash is same,this field is false
+	repeated relation_info relations=2;//if the current_hash is same,this field is empty
+}
+message group_members_req{
+	//hex(sha256(join(sort([userid1+"_"+duty+"_"+name,userid2+"_"+duty+"_"+name]),",")))
+	string current_hash=1[(pbex.string_bytes_len_eq)=64];
+	string group_id=2[(pbex.string_bytes_len_eq)=24];
+}
+message group_members_resp{
+	bool update=1;//if the current_hash is same,this field is false
+	repeated relation_info members=2;//if the current_hash is same,this field is empty
+}
+message update_user_relation_name_req{
+	string target=1[(pbex.string_bytes_len_eq)=24];
+	string target_type=2[(pbex.string_bytes_in)="user",(pbex.string_bytes_in)="group"];
+	string new_name=3[(pbex.string_bytes_len_gt)=0];
+}
+message update_user_relation_name_resp{
+}
+message update_name_in_group_req{
+	string group_id=1[(pbex.string_bytes_len_eq)=24];
+	string new_name=2[(pbex.string_bytes_len_gt)=0];
+}
+message update_name_in_group_resp{
+}
+message update_duty_in_group_req{
+	string user_id=1[(pbex.string_bytes_len_eq)=24];
+	string group_id=2[(pbex.string_bytes_len_eq)=24];
+	uint32 new_duty=3[(pbex.uint_in)=0,(pbex.uint_in)=3];
+}
+message update_duty_in_group_resp{
+}
