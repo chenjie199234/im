@@ -195,6 +195,7 @@ message group_members_resp{
 	repeated relation_info members=2;//if the current_hash is same,this field is empty
 }
 message update_user_relation_name_req{
+	//if target_type == "user" && (target) == (userid in token) means update self's name
 	string target=1[(pbex.string_bytes_len_eq)=24];
 	string target_type=2[(pbex.string_bytes_in)="user",(pbex.string_bytes_in)="group"];
 	string new_name=3[(pbex.string_bytes_len_gt)=0];

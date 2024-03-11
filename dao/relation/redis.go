@@ -4,13 +4,11 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/chenjie199234/im/ecode"
 	"github.com/chenjie199234/im/model"
 
 	gredis "github.com/redis/go-redis/v9"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 const defaultExpire = 86400
@@ -26,7 +24,6 @@ var refreshRequestScript *gredis.Script
 
 var setRelationScript *gredis.Script
 var addRelationScript *gredis.Script
-var refreshRelationScript *gredis.Script
 
 func init() {
 	addRequestScript = gredis.NewScript(`local time=redis.call("TIME")
@@ -69,32 +66,13 @@ end
 local num=redis.call("HSET",KEYS[1],ARGV[3],ARGV[4])
 redis.call("EXPIRE",KEYS[1],ARGV[1])
 return num`)
-	refreshRelationScript = gredis.NewScript(`if(redis.call("EXISTS",KEYS[1])==0)
-then
-	return nil
-end
-local tmp=redis.call("HGET",KEYS[1],ARGV[2])
-if(tmp==nil or tmp=="")
-then
-	return -1
-end
-if(redis.call("HEXISTS",KEYS[1],ARGV[3])==0)
-then
-	return 0
-end
-local num=redis.call("HSET",KEYS[1],ARGV[3],ARGV[4])
-redis.call("EXPIRE",KEYS[1],ARGV[1])
-return num`)
 }
 
 //-----------------------request--------------------------------------
 
-func (d *Dao) RedisAddMakeFriendRequest(ctx context.Context, requester, accepter primitive.ObjectID) error {
-	if requester.IsZero() || accepter.IsZero() {
-		return ecode.ErrReq
-	}
-	key := "request_user_{" + accepter.Hex() + "}"
-	value := "user_" + requester.Hex()
+func (d *Dao) RedisAddMakeFriendRequest(ctx context.Context, requester, accepter string) error {
+	key := "request_user_{" + accepter + "}"
+	value := "user_" + requester
 	num, e := addRequestScript.Run(ctx, d.redis, []string{key}, value, defaultExpire, defaultRequest).Int()
 	if e != nil {
 		return e
@@ -105,12 +83,9 @@ func (d *Dao) RedisAddMakeFriendRequest(ctx context.Context, requester, accepter
 	return nil
 }
 
-func (d *Dao) RedisAddGroupInviteRequest(ctx context.Context, accepter, groupid primitive.ObjectID) error {
-	if accepter.IsZero() || groupid.IsZero() {
-		return ecode.ErrReq
-	}
-	key := "request_user_{" + accepter.Hex() + "}"
-	value := "group_" + groupid.Hex()
+func (d *Dao) RedisAddGroupInviteRequest(ctx context.Context, groupid, accepter string) error {
+	key := "request_user_{" + accepter + "}"
+	value := "group_" + groupid
 	num, e := addRequestScript.Run(ctx, d.redis, []string{key}, value, defaultExpire, defaultRequest).Int()
 	if e != nil {
 		return e
@@ -121,12 +96,9 @@ func (d *Dao) RedisAddGroupInviteRequest(ctx context.Context, accepter, groupid 
 	return nil
 }
 
-func (d *Dao) RedisAddGroupApplyRequest(ctx context.Context, requester, groupid primitive.ObjectID) error {
-	if requester.IsZero() || groupid.IsZero() {
-		return ecode.ErrReq
-	}
-	key := "request_group_{" + groupid.Hex() + "}"
-	num, e := addRequestScript.Run(ctx, d.redis, []string{key}, requester.Hex(), defaultExpire, maxRequest).Int()
+func (d *Dao) RedisAddGroupApplyRequest(ctx context.Context, requester, groupid string) error {
+	key := "request_group_{" + groupid + "}"
+	num, e := addRequestScript.Run(ctx, d.redis, []string{key}, requester, defaultExpire, maxRequest).Int()
 	if e != nil {
 		return e
 	}
@@ -137,11 +109,8 @@ func (d *Dao) RedisAddGroupApplyRequest(ctx context.Context, requester, groupid 
 }
 
 // return key:userid or groupid,value:user or group
-func (d *Dao) RedisGetUserRequests(ctx context.Context, userid primitive.ObjectID) (map[string]string, error) {
-	if userid.IsZero() {
-		return nil, ecode.ErrReq
-	}
-	key := "request_user_{" + userid.Hex() + "}"
+func (d *Dao) RedisGetUserRequests(ctx context.Context, userid string) (map[string]string, error) {
+	key := "request_user_{" + userid + "}"
 	strs, e := getRequestScript.Run(ctx, d.redis, []string{key}, defaultExpire).StringSlice()
 	if e != nil {
 		return nil, e
@@ -156,105 +125,56 @@ func (d *Dao) RedisGetUserRequests(ctx context.Context, userid primitive.ObjectI
 	}
 	return r, nil
 }
-func (d *Dao) RedisRefreshUserRequest(ctx context.Context, userid, target primitive.ObjectID, targetType string) error {
-	if userid.IsZero() || target.IsZero() || (targetType != "user" && targetType != "group") {
-		return ecode.ErrReq
-	}
-	key := "request_user_{" + userid.Hex() + "}"
-	value := targetType + "_" + target.Hex()
+func (d *Dao) RedisRefreshUserRequest(ctx context.Context, userid, target, targetType string) error {
+	key := "request_user_{" + userid + "}"
+	value := targetType + "_" + target
 	e := refreshRequestScript.Run(ctx, d.redis, []string{key}, value, defaultExpire).Err()
 	if e != nil && e == gredis.Nil {
 		e = ecode.ErrRequestNotExist
 	}
 	return e
 }
-func (d *Dao) RedisDelUserRequest(ctx context.Context, userid, target primitive.ObjectID, targetType string) error {
-	if userid.IsZero() || target.IsZero() || (targetType != "user" && targetType != "group") {
-		return ecode.ErrReq
-	}
-	key := "request_user_{" + userid.Hex() + "}"
-	value := targetType + "_" + target.Hex()
+func (d *Dao) RedisDelUserRequest(ctx context.Context, userid, target, targetType string) error {
+	key := "request_user_{" + userid + "}"
+	value := targetType + "_" + target
 	return d.redis.ZRem(ctx, key, value).Err()
 }
 
 // return userids
-func (d *Dao) RedisGetGroupRequests(ctx context.Context, groupid primitive.ObjectID) ([]string, error) {
-	if groupid.IsZero() {
-		return nil, ecode.ErrReq
-	}
-	key := "request_group_{" + groupid.Hex() + "}"
+func (d *Dao) RedisGetGroupRequests(ctx context.Context, groupid string) ([]string, error) {
+	key := "request_group_{" + groupid + "}"
 	return getRequestScript.Run(ctx, d.redis, []string{key}, defaultExpire).StringSlice()
 }
-func (d *Dao) RedisRefreshGroupRequest(ctx context.Context, groupid, userid primitive.ObjectID) error {
-	if groupid.IsZero() || userid.IsZero() {
-		return ecode.ErrReq
-	}
-	key := "request_group_{" + groupid.Hex() + "}"
-	e := refreshRequestScript.Run(ctx, d.redis, []string{key}, userid.Hex(), defaultExpire).Err()
+func (d *Dao) RedisRefreshGroupRequest(ctx context.Context, groupid, userid string) error {
+	key := "request_group_{" + groupid + "}"
+	e := refreshRequestScript.Run(ctx, d.redis, []string{key}, userid, defaultExpire).Err()
 	if e != nil && e == gredis.Nil {
 		e = ecode.ErrRequestNotExist
 	}
 	return e
 }
-func (d *Dao) RedisDelGroupRequest(ctx context.Context, groupid, userid primitive.ObjectID) error {
-	if groupid.IsZero() || userid.IsZero() {
-		return ecode.ErrReq
-	}
-	key := "request_group_{" + groupid.Hex() + "}"
-	return d.redis.ZRem(ctx, key, userid.Hex()).Err()
+func (d *Dao) RedisDelGroupRequest(ctx context.Context, groupid, userid string) error {
+	key := "request_group_{" + groupid + "}"
+	return d.redis.ZRem(ctx, key, userid).Err()
 }
 
 //-----------------------user--------------------------------------
 
-func (d *Dao) RedisSetUserName(ctx context.Context, userid primitive.ObjectID, name string) error {
-	if userid.IsZero() {
-		return ecode.ErrReq
-	}
-	key := "name_user_{" + userid.Hex() + "}"
-	return d.redis.SetEx(ctx, key, name, maxExpire*time.Second).Err()
-}
-
-func (d *Dao) RedisGetUserName(ctx context.Context, userid primitive.ObjectID) (string, error) {
-	if userid.IsZero() {
-		return "", ecode.ErrReq
-	}
-	key := "name_user_{" + userid.Hex() + "}"
-	username, e := d.redis.GetEx(ctx, key, maxExpire*time.Second).Result()
-	if e != nil {
-		return "", e
-	}
-	if username == "" {
-		return "", ecode.ErrUserNotExist
-	}
-	return username, nil
-}
-
-func (d *Dao) RedisDelUserName(ctx context.Context, userid primitive.ObjectID) error {
-	if userid.IsZero() {
-		return ecode.ErrReq
-	}
-	key := "name_user_{" + userid.Hex() + "}"
-	return d.redis.Del(ctx, key).Err()
-}
-
-// targets must be empty or contain user self(target == primitive.NilObjectID)
-func (d *Dao) RedisSetUserRelations(ctx context.Context, userid primitive.ObjectID, targets []*model.RelationTarget) error {
-	if userid.IsZero() {
-		return ecode.ErrReq
-	}
-	key := "relation_user_{" + userid.Hex() + "}"
+// targets must be empty or contain user self(target == "")
+func (d *Dao) RedisSetUserRelations(ctx context.Context, userid string, targets []*model.RelationTarget) error {
+	key := "relation_user_{" + userid + "}"
 	args := make([]interface{}, 0, len(targets)*2+3)
-	args = append(args, maxExpire, "user_"+primitive.NilObjectID.Hex(), "")
+	args = append(args, maxExpire, "user_", "")
 
 	var selfname string
 	for _, v := range targets {
 		if (v.TargetType != "user" && v.TargetType != "group") || v.Name == "" {
 			return ecode.ErrReq
 		}
-		if v.Target.IsZero() {
+		if v.Target == "" {
 			selfname = v.Name
 		}
-		args = append(args, v.TargetType+"_"+v.Target.Hex(), v.Name)
+		args = append(args, v.TargetType+"_"+v.Target, v.Name)
 	}
 	if len(targets) > 0 && selfname == "" {
 		return ecode.ErrReq
@@ -262,11 +182,8 @@ func (d *Dao) RedisSetUserRelations(ctx context.Context, userid primitive.Object
 	return setRelationScript.Run(ctx, d.redis, []string{key}, args...).Err()
 }
 
-func (d *Dao) RedisCountUserRelations(ctx context.Context, userid, exceptTarget primitive.ObjectID, exceptTargetType string) (uint64, error) {
-	if userid.IsZero() || (!exceptTarget.IsZero() && exceptTargetType != "user" && exceptTargetType != "group") {
-		return 0, ecode.ErrReq
-	}
-	key := "relation_user_{" + userid.Hex() + "}"
+func (d *Dao) RedisCountUserRelations(ctx context.Context, userid, exceptTarget, exceptTargetType string) (uint64, error) {
+	key := "relation_user_{" + userid + "}"
 	count, e := d.redis.HLen(ctx, key).Uint64()
 	if e != nil {
 		return 0, e
@@ -274,15 +191,15 @@ func (d *Dao) RedisCountUserRelations(ctx context.Context, userid, exceptTarget 
 	if count == 0 {
 		return 0, gredis.Nil
 	} else if count == 1 {
-		username, e := d.redis.HGet(ctx, key, "user_"+primitive.NilObjectID.Hex()).Result()
+		username, e := d.redis.HGet(ctx, key, "user_").Result()
 		if e != nil {
 			return 0, e
 		}
 		if username == "" {
 			return 0, ecode.ErrUserNotExist
 		}
-	} else if !exceptTarget.IsZero() {
-		exist, e := d.redis.HExists(ctx, key, exceptTargetType+"_"+exceptTarget.Hex()).Result()
+	} else if exceptTarget != "" {
+		exist, e := d.redis.HExists(ctx, key, exceptTargetType+"_"+exceptTarget).Result()
 		if e != nil {
 			return 0, e
 		}
@@ -293,12 +210,12 @@ func (d *Dao) RedisCountUserRelations(ctx context.Context, userid, exceptTarget 
 	return count - 1, nil
 }
 
-func (d *Dao) RedisAddUserRelation(ctx context.Context, userid primitive.ObjectID, target primitive.ObjectID, targetType, targetname string) error {
-	if userid.IsZero() || target.IsZero() || (targetType != "user" && targetType != "group") || targetname == "" {
+func (d *Dao) RedisAddUserRelation(ctx context.Context, userid, target, targetType, targetname string) error {
+	if (targetType != "user" && targetType != "group") || targetname == "" {
 		return ecode.ErrReq
 	}
-	key := "relation_user_{" + userid.Hex() + "}"
-	args := []interface{}{maxExpire, "user_" + primitive.NilObjectID.Hex(), targetType + "_" + target.Hex(), targetname}
+	key := "relation_user_{" + userid + "}"
+	args := []interface{}{maxExpire, "user_", targetType + "_" + target, targetname}
 	r, e := addRelationScript.Run(ctx, d.redis, []string{key}, args...).Int()
 	if e != nil {
 		return e
@@ -309,28 +226,8 @@ func (d *Dao) RedisAddUserRelation(ctx context.Context, userid primitive.ObjectI
 	return nil
 }
 
-// won't add new relation,if the relation exist:update,if the relation not exist:do nothing
-func (d *Dao) RedisRefreshUserRelation(ctx context.Context, userid primitive.ObjectID, target primitive.ObjectID, targetType, targetname string) error {
-	if userid.IsZero() || target.IsZero() || (targetType != "user" && targetType != "group") || targetname == "" {
-		return ecode.ErrReq
-	}
-	key := "relation_user_{" + userid.Hex() + "}"
-	args := []interface{}{maxExpire, "user_" + primitive.NilObjectID.Hex(), targetType + "_" + target.Hex(), targetname}
-	r, e := refreshRelationScript.Run(ctx, d.redis, []string{key}, args...).Int()
-	if e != nil {
-		return e
-	}
-	if r == -1 {
-		return ecode.ErrUserNotExist
-	}
-	return nil
-}
-
-func (d *Dao) RedisGetUserRelations(ctx context.Context, userid primitive.ObjectID) ([]*model.RelationTarget, error) {
-	if userid.IsZero() {
-		return nil, ecode.ErrReq
-	}
-	key := "relation_user_{" + userid.Hex() + "}"
+func (d *Dao) RedisGetUserRelations(ctx context.Context, userid string) ([]*model.RelationTarget, error) {
+	key := "relation_user_{" + userid + "}"
 	all, e := d.redis.HGetAll(ctx, key).Result()
 	if e != nil {
 		return nil, e
@@ -341,29 +238,24 @@ func (d *Dao) RedisGetUserRelations(ctx context.Context, userid primitive.Object
 	r := make([]*model.RelationTarget, 0, len(all))
 	for k, name := range all {
 		if strings.HasPrefix(k, "user_") {
-			targetType := "user"
-			target, e := primitive.ObjectIDFromHex(k[5:])
-			if e != nil {
-				return nil, ecode.ErrCacheDataBroken
-			}
-			if target.IsZero() && name == "" {
+			if k[5:] == "" && name == "" {
 				return nil, ecode.ErrUserNotExist
 			}
-			tmp := &model.RelationTarget{
-				Target:     target,
-				TargetType: targetType,
-				Name:       name,
-			}
-			r = append(r, tmp)
-		} else if strings.HasPrefix(k, "group_") {
-			targetType := "group"
-			target, e := primitive.ObjectIDFromHex(k[6:])
-			if e != nil {
+			if name == "" {
 				return nil, ecode.ErrCacheDataBroken
 			}
 			r = append(r, &model.RelationTarget{
-				Target:     target,
-				TargetType: targetType,
+				Target:     k[5:],
+				TargetType: "user",
+				Name:       name,
+			})
+		} else if strings.HasPrefix(k, "group_") {
+			if k[6:] == "" || name == "" {
+				return nil, ecode.ErrCacheDataBroken
+			}
+			r = append(r, &model.RelationTarget{
+				Target:     k[6:],
+				TargetType: "group",
 				Name:       name,
 			})
 		} else {
@@ -373,12 +265,9 @@ func (d *Dao) RedisGetUserRelations(ctx context.Context, userid primitive.Object
 	return r, nil
 }
 
-func (d *Dao) RedisGetUserRelation(ctx context.Context, userid, target primitive.ObjectID, targetType string) (*model.RelationTarget, error) {
-	if userid.IsZero() || target.IsZero() || (targetType != "user" && targetType != "group") {
-		return nil, ecode.ErrReq
-	}
-	key := "relation_user_{" + userid.Hex() + "}"
-	rs, e := d.redis.HMGet(ctx, key, "user_"+primitive.NilObjectID.Hex(), targetType+"_"+target.Hex()).Result()
+func (d *Dao) RedisGetUserRelation(ctx context.Context, userid, target, targetType string) (*model.RelationTarget, error) {
+	key := "relation_user_{" + userid + "}"
+	rs, e := d.redis.HMGet(ctx, key, "user_", targetType+"_"+target).Result()
 	if e != nil {
 		return nil, e
 	}
@@ -391,84 +280,51 @@ func (d *Dao) RedisGetUserRelation(ctx context.Context, userid, target primitive
 	if rs[1] == nil {
 		if targetType == "user" {
 			return nil, ecode.ErrNotFriends
+		} else if targetType == "group" {
+			return nil, ecode.ErrNotInGroup
+		} else {
+			return nil, ecode.ErrReq
 		}
-		return nil, ecode.ErrNotInGroup
+	}
+	name := rs[1].(string)
+	if target != "" && name == "" {
+		return nil, ecode.ErrCacheDataBroken
 	}
 	return &model.RelationTarget{
 		Target:     target,
 		TargetType: targetType,
-		Name:       rs[1].(string),
+		Name:       name,
 	}, nil
 }
 
-func (d *Dao) RedisDelUserRelations(ctx context.Context, userid primitive.ObjectID) error {
-	if userid.IsZero() {
-		return ecode.ErrReq
-	}
-	key := "relation_user_{" + userid.Hex() + "}"
+func (d *Dao) RedisDelUserRelations(ctx context.Context, userid string) error {
+	key := "relation_user_{" + userid + "}"
 	return d.redis.Del(ctx, key).Err()
 }
 
-func (d *Dao) RedisDelUserRelation(ctx context.Context, userid, target primitive.ObjectID, targetType string) error {
-	if userid.IsZero() || target.IsZero() || (targetType != "user" && targetType != "group") {
-		return ecode.ErrReq
-	}
-	key := "relation_user_{" + userid.Hex() + "}"
-	field := targetType + "_" + target.Hex()
+func (d *Dao) RedisDelUserRelation(ctx context.Context, userid, target, targetType string) error {
+	key := "relation_user_{" + userid + "}"
+	field := targetType + "_" + target
 	return d.redis.HDel(ctx, key, field).Err()
 }
 
 //-----------------------group--------------------------------------
 
-func (d *Dao) RedisSetGroupName(ctx context.Context, groupid primitive.ObjectID, name string) error {
-	if groupid.IsZero() {
-		return ecode.ErrReq
-	}
-	key := "name_group_{" + groupid.Hex() + "}"
-	return d.redis.SetEx(ctx, key, name, maxExpire*time.Second).Err()
-}
-
-func (d *Dao) RedisGetGroupName(ctx context.Context, groupid primitive.ObjectID) (string, error) {
-	if groupid.IsZero() {
-		return "", ecode.ErrReq
-	}
-	key := "name_group_{" + groupid.Hex() + "}"
-	groupname, e := d.redis.GetEx(ctx, key, maxExpire*time.Second).Result()
-	if e != nil {
-		return "", e
-	}
-	if groupname == "" {
-		return "", ecode.ErrGroupNotExist
-	}
-	return groupname, nil
-}
-
-func (d *Dao) RedisDelGroupName(ctx context.Context, groupid primitive.ObjectID) error {
-	if groupid.IsZero() {
-		return ecode.ErrReq
-	}
-	key := "name_group_{" + groupid.Hex() + "}"
-	return d.redis.Del(ctx, key).Err()
-}
-
-// members must be empty or contain group self(target == primitive.NilObjectID)
-func (d *Dao) RedisSetGroupMembers(ctx context.Context, groupid primitive.ObjectID, users []*model.RelationTarget) error {
-	if groupid.IsZero() {
-		return ecode.ErrReq
-	}
-	key := "relation_group_{" + groupid.Hex() + "}"
+// members must be empty or contain group self(target == "")
+func (d *Dao) RedisSetGroupMembers(ctx context.Context, groupid string, users []*model.RelationTarget) error {
+	key := "relation_group_{" + groupid + "}"
 	args := make([]interface{}, 0, len(users)*2+3)
-	args = append(args, maxExpire, primitive.NilObjectID.Hex(), "")
+	args = append(args, maxExpire, "", "")
 
 	var groupname string
 	for _, v := range users {
 		if v.TargetType != "user" || v.Name == "" {
 			return ecode.ErrReq
 		}
-		if v.Target.IsZero() {
+		if v.Target == "" {
 			groupname = v.Name
 		}
-		args = append(args, v.Target.Hex(), strconv.Itoa(int(v.Duty))+"_"+v.Name)
+		args = append(args, v.Target, strconv.Itoa(int(v.Duty))+"_"+v.Name)
 	}
 	if len(users) > 0 && groupname == "" {
 		return ecode.ErrReq
@@ -476,11 +332,8 @@ func (d *Dao) RedisSetGroupMembers(ctx context.Context, groupid primitive.Object
 	return setRelationScript.Run(ctx, d.redis, []string{key}, args...).Err()
 }
 
-func (d *Dao) RedisCountGroupMembers(ctx context.Context, groupid primitive.ObjectID, exceptMember primitive.ObjectID) (uint64, error) {
-	if groupid.IsZero() {
-		return 0, ecode.ErrReq
-	}
-	key := "relation_group_{" + groupid.Hex() + "}"
+func (d *Dao) RedisCountGroupMembers(ctx context.Context, groupid, exceptMember string) (uint64, error) {
+	key := "relation_group_{" + groupid + "}"
 	count, e := d.redis.HLen(ctx, key).Uint64()
 	if e != nil {
 		return 0, e
@@ -488,15 +341,15 @@ func (d *Dao) RedisCountGroupMembers(ctx context.Context, groupid primitive.Obje
 	if count == 0 {
 		return 0, gredis.Nil
 	} else if count == 1 {
-		groupname, e := d.redis.HGet(ctx, key, primitive.NilObjectID.Hex()).Result()
+		groupname, e := d.redis.HGet(ctx, key, "").Result()
 		if e != nil {
 			return 0, e
 		}
 		if groupname == "" {
 			return 0, ecode.ErrGroupNotExist
 		}
-	} else if !exceptMember.IsZero() {
-		exist, e := d.redis.HExists(ctx, key, exceptMember.Hex()).Result()
+	} else if exceptMember != "" {
+		exist, e := d.redis.HExists(ctx, key, exceptMember).Result()
 		if e != nil {
 			return 0, e
 		}
@@ -507,12 +360,12 @@ func (d *Dao) RedisCountGroupMembers(ctx context.Context, groupid primitive.Obje
 	return count - 1, nil
 }
 
-func (d *Dao) RedisAddGroupMember(ctx context.Context, groupid, userid primitive.ObjectID, username string, userduty uint8) error {
-	if groupid.IsZero() || userid.IsZero() || username == "" {
+func (d *Dao) RedisAddGroupMember(ctx context.Context, groupid, userid, username string, userduty uint8) error {
+	if username == "" {
 		return ecode.ErrReq
 	}
-	key := "relation_group_{" + groupid.Hex() + "}"
-	args := []interface{}{maxExpire, primitive.NilObjectID.Hex(), userid.Hex(), strconv.Itoa(int(userduty)) + "_" + username}
+	key := "relation_group_{" + groupid + "}"
+	args := []interface{}{maxExpire, "", userid, strconv.Itoa(int(userduty)) + "_" + username}
 	r, e := addRelationScript.Run(ctx, d.redis, []string{key}, args...).Int()
 	if e != nil {
 		return e
@@ -523,28 +376,8 @@ func (d *Dao) RedisAddGroupMember(ctx context.Context, groupid, userid primitive
 	return nil
 }
 
-// won't add new relation,if the relation exist:update,if the relation not exist:do nothing
-func (d *Dao) RedisRefreshGroupMember(ctx context.Context, groupid, userid primitive.ObjectID, username string, userduty uint8) error {
-	if groupid.IsZero() || userid.IsZero() || username == "" {
-		return ecode.ErrReq
-	}
-	key := "relation_group_{" + groupid.Hex() + "}"
-	args := []interface{}{maxExpire, primitive.NilObjectID.Hex(), userid.Hex(), strconv.Itoa(int(userduty)) + "_" + username}
-	r, e := refreshRelationScript.Run(ctx, d.redis, []string{key}, args...).Int()
-	if e != nil {
-		return e
-	}
-	if r == -1 {
-		return ecode.ErrGroupNotExist
-	}
-	return nil
-}
-
-func (d *Dao) RedisGetGroupMembers(ctx context.Context, groupid primitive.ObjectID) ([]*model.RelationTarget, error) {
-	if groupid.IsZero() {
-		return nil, ecode.ErrReq
-	}
-	key := "relation_group_{" + groupid.Hex() + "}"
+func (d *Dao) RedisGetGroupMembers(ctx context.Context, groupid string) ([]*model.RelationTarget, error) {
+	key := "relation_group_{" + groupid + "}"
 	all, e := d.redis.HGetAll(ctx, key).Result()
 	if e != nil {
 		return nil, e
@@ -554,11 +387,7 @@ func (d *Dao) RedisGetGroupMembers(ctx context.Context, groupid primitive.Object
 	}
 	r := make([]*model.RelationTarget, 0, len(all))
 	for k, v := range all {
-		target, e := primitive.ObjectIDFromHex(k)
-		if e != nil {
-			return nil, ecode.ErrCacheDataBroken
-		}
-		if target.IsZero() && v == "" {
+		if k == "" && v == "" {
 			return nil, ecode.ErrGroupNotExist
 		}
 		index := strings.Index(v, "_")
@@ -569,24 +398,19 @@ func (d *Dao) RedisGetGroupMembers(ctx context.Context, groupid primitive.Object
 		if e != nil || duty < 0 || duty >= 256 {
 			return nil, ecode.ErrCacheDataBroken
 		}
-		name := v[index+1:]
-		tmp := &model.RelationTarget{
-			Target:     target,
+		r = append(r, &model.RelationTarget{
+			Target:     k,
 			TargetType: "user",
-			Name:       name,
+			Name:       v[index+1:],
 			Duty:       uint8(duty),
-		}
-		r = append(r, tmp)
+		})
 	}
 	return r, nil
 }
 
-func (d *Dao) RedisGetGroupMember(ctx context.Context, groupid, userid primitive.ObjectID) (*model.RelationTarget, error) {
-	if groupid.IsZero() || userid.IsZero() {
-		return nil, ecode.ErrReq
-	}
-	key := "relation_group_{" + groupid.Hex() + "}"
-	rs, e := d.redis.HMGet(ctx, key, primitive.NilObjectID.Hex(), userid.Hex()).Result()
+func (d *Dao) RedisGetGroupMember(ctx context.Context, groupid, userid string) (*model.RelationTarget, error) {
+	key := "relation_group_{" + groupid + "}"
+	rs, e := d.redis.HMGet(ctx, key, "", userid).Result()
 	if e != nil {
 		return nil, e
 	}
@@ -605,7 +429,7 @@ func (d *Dao) RedisGetGroupMember(ctx context.Context, groupid, userid primitive
 		return nil, ecode.ErrCacheDataBroken
 	}
 	name := str[index+1:]
-	if name == "" {
+	if userid != "" && name == "" {
 		return nil, ecode.ErrCacheDataBroken
 	}
 	duty, e := strconv.Atoi(str[:index])
@@ -620,18 +444,12 @@ func (d *Dao) RedisGetGroupMember(ctx context.Context, groupid, userid primitive
 	}, nil
 }
 
-func (d *Dao) RedisDelGroupMembers(ctx context.Context, groupid primitive.ObjectID) error {
-	if groupid.IsZero() {
-		return ecode.ErrReq
-	}
-	key := "relation_group_{" + groupid.Hex() + "}"
+func (d *Dao) RedisDelGroupMembers(ctx context.Context, groupid string) error {
+	key := "relation_group_{" + groupid + "}"
 	return d.redis.Del(ctx, key).Err()
 }
 
-func (d *Dao) RedisDelGroupMember(ctx context.Context, groupid, userid primitive.ObjectID) error {
-	if groupid.IsZero() || userid.IsZero() {
-		return ecode.ErrReq
-	}
-	key := "relation_group_{" + groupid.Hex() + "}"
-	return d.redis.HDel(ctx, key, userid.Hex()).Err()
+func (d *Dao) RedisDelGroupMember(ctx context.Context, groupid, userid string) error {
+	key := "relation_group_{" + groupid + "}"
+	return d.redis.HDel(ctx, key, userid).Err()
 }

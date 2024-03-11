@@ -82,9 +82,9 @@ sh.shardCollection("im.ack",{chat_key:"hashed"});
 
 collection: relation
 {
-    main:ObjectId("xxx"),
+    main:"",
     main_type:"",//user or group
-    sub:ObjectId("xxx"),
+    sub:"",
     sub_type:"",//user or group
     duty:0,//this is used when main_type is group and sub is not empty,0-normal,1-system owner,2-owner,3-admin
     name:"",//this is used when sub is empty

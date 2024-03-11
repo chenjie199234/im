@@ -21,7 +21,6 @@ import (
 	"github.com/chenjie199234/Corelib/metadata"
 	"github.com/chenjie199234/Corelib/util/common"
 	"github.com/chenjie199234/Corelib/util/graceful"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // Service subservice for relation business
@@ -41,42 +40,33 @@ func Start() *Service {
 }
 func (s *Service) MakeFriend(ctx context.Context, req *api.MakeFriendReq) (*api.MakeFriendResp, error) {
 	md := metadata.GetMetadata(ctx)
-	requester, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[MakeFriend] token format wrong", log.String("requester", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	accepter, e := primitive.ObjectIDFromHex(req.UserId)
-	if e != nil {
-		log.Error(ctx, "[MakeFriend] accepter format wrong", log.String("accepter", req.UserId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	if requester.IsZero() || accepter.IsZero() || requester == accepter {
+	requester := md["Token-User"]
+	if requester == req.UserId {
 		return nil, ecode.ErrReq
 	}
 
 	//check accepter already set self's name
-	if _, e = s.relationDao.GetUserName(ctx, accepter); e != nil {
+	if _, e := s.relationDao.GetUserName(ctx, req.UserId); e != nil {
 		log.Error(ctx, "[MakeFriend] check accepter's name failed", log.String("accepter", req.UserId), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	//check requester already set self's name
-	if _, e = s.relationDao.GetUserName(ctx, requester); e != nil {
-		log.Error(ctx, "[MakeFriend] check requester's name failed", log.String("requester", md["Token-User"]), log.CError(e))
+	if _, e := s.relationDao.GetUserName(ctx, requester); e != nil {
+		log.Error(ctx, "[MakeFriend] check requester's name failed", log.String("requester", requester), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	//check current relation in accepter's view
-	if _, e = s.relationDao.GetUserRelation(ctx, accepter, requester, "user"); e != nil && e != ecode.ErrNotFriends {
+	if _, e := s.relationDao.GetUserRelation(ctx, req.UserId, requester, "user"); e != nil && e != ecode.ErrNotFriends {
 		log.Error(ctx, "[MakeFriend] check current relation in accepter's view failed",
-			log.String("requester", md["Token-User"]),
+			log.String("requester", requester),
 			log.String("accepter", req.UserId),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	} else if e == nil {
 		//check current relation in requester's view
-		if _, e = s.relationDao.GetUserRelation(ctx, requester, accepter, "user"); e != nil && e != ecode.ErrNotFriends {
+		if _, e = s.relationDao.GetUserRelation(ctx, requester, req.UserId, "user"); e != nil && e != ecode.ErrNotFriends {
 			log.Error(ctx, "[MakeFriend] check current relation in accepter's view failed",
-				log.String("requester", md["Token-User"]),
+				log.String("requester", requester),
 				log.String("accepter", req.UserId),
 				log.CError(e))
 			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
@@ -85,7 +75,7 @@ func (s *Service) MakeFriend(ctx context.Context, req *api.MakeFriendReq) (*api.
 			return &api.MakeFriendResp{}, nil
 		} else if max := config.AC.Service.MaxUserRelation; max != 0 {
 			//check accepte's current relations count
-			if count, e := s.relationDao.CountUserRelations(ctx, accepter, requester, "user"); e != nil {
+			if count, e := s.relationDao.CountUserRelations(ctx, req.UserId, requester, "user"); e != nil {
 				log.Error(ctx, "[MakeFriend] check accepter's current relations count failed", log.String("accepter", req.UserId), log.CError(e))
 				return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 			} else if count >= uint64(max) {
@@ -94,14 +84,14 @@ func (s *Service) MakeFriend(ctx context.Context, req *api.MakeFriendReq) (*api.
 		}
 	} else if max := config.AC.Service.MaxUserRelation; max != 0 {
 		//check requester's currnent relations count
-		if count, e := s.relationDao.CountUserRelations(ctx, requester, accepter, "user"); e != nil {
-			log.Error(ctx, "[MakeFriend] check requester's current relations count failed", log.String("requester", md["Token-User"]), log.CError(e))
+		if count, e := s.relationDao.CountUserRelations(ctx, requester, req.UserId, "user"); e != nil {
+			log.Error(ctx, "[MakeFriend] check requester's current relations count failed", log.String("requester", requester), log.CError(e))
 			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 		} else if count >= uint64(max) {
 			return nil, ecode.ErrSelfTooManyRelations
 		}
 		//check accepter's current relations count
-		if count, e := s.relationDao.CountUserRelations(ctx, accepter, requester, "user"); e != nil {
+		if count, e := s.relationDao.CountUserRelations(ctx, req.UserId, requester, "user"); e != nil {
 			log.Error(ctx, "[MakeFriend] check accepter's current relations count failed", log.String("accepter", req.UserId), log.CError(e))
 			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 		} else if count >= uint64(max) {
@@ -109,115 +99,83 @@ func (s *Service) MakeFriend(ctx context.Context, req *api.MakeFriendReq) (*api.
 		}
 	}
 
-	if e := s.relationDao.RedisAddMakeFriendRequest(ctx, requester, accepter); e != nil {
-		log.Error(ctx, "[MakeFriend] redis op failed", log.String("requester", md["Token-User"]), log.String("accepter", req.UserId), log.CError(e))
+	if e := s.relationDao.RedisAddMakeFriendRequest(ctx, requester, req.UserId); e != nil {
+		log.Error(ctx, "[MakeFriend] redis op failed", log.String("requester", requester), log.String("accepter", req.UserId), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	return &api.MakeFriendResp{}, nil
 }
 func (s *Service) AcceptMakeFriend(ctx context.Context, req *api.AcceptMakeFriendReq) (*api.AcceptMakeFriendResp, error) {
 	md := metadata.GetMetadata(ctx)
-	userid, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[AcceptMakeFriend] token format wrong", log.String("user_id", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	friendid, e := primitive.ObjectIDFromHex(req.UserId)
-	if e != nil {
-		log.Error(ctx, "[AcceptMakeFriend] friendid format wrong", log.String("friend_id", req.UserId), log.CError(e))
+	accepter := md["Token-User"]
+	if accepter == req.UserId {
 		return nil, ecode.ErrReq
 	}
-	if userid.IsZero() || friendid.IsZero() || userid == friendid {
-		return nil, ecode.ErrReq
-	}
-	if e = s.relationDao.RedisRefreshUserRequest(ctx, userid, friendid, "user"); e != nil {
-		log.Error(ctx, "[AcceptMakeFriend] redis op failed", log.String("user_id", md["Token-User"]), log.String("friend_id", req.UserId), log.CError(e))
+	if e := s.relationDao.RedisRefreshUserRequest(ctx, accepter, req.UserId, "user"); e != nil {
+		log.Error(ctx, "[AcceptMakeFriend] redis op failed", log.String("accepter", accepter), log.String("friend_id", req.UserId), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	if max := config.AC.Service.MaxUserRelation; max != 0 {
-		//check user's current relations count
-		if count, e := s.relationDao.CountUserRelations(ctx, userid, friendid, "user"); e != nil {
-			log.Error(ctx, "[AcceptMakeFriend] check user's current relations count failed", log.String("user_id", md["Token-User"]), log.CError(e))
+		//check accepter's current relations count
+		if count, e := s.relationDao.CountUserRelations(ctx, accepter, req.UserId, "user"); e != nil {
+			log.Error(ctx, "[AcceptMakeFriend] check accepter's current relations count failed", log.String("accepter", accepter), log.CError(e))
 			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 		} else if count >= uint64(max) {
 			return nil, ecode.ErrSelfTooManyRelations
 		}
 		//check friend's current relations count
-		if count, e := s.relationDao.CountUserRelations(ctx, friendid, userid, "user"); e != nil {
+		if count, e := s.relationDao.CountUserRelations(ctx, req.UserId, accepter, "user"); e != nil {
 			log.Error(ctx, "[AcceptMakeFriend] check friend's current relations count failed", log.String("friend_id", req.UserId), log.CError(e))
 			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 		} else if count >= uint64(max) {
 			return nil, ecode.ErrTargetTooManyRelations
 		}
 	}
-	if e = s.relationDao.AcceptMakeFriend(ctx, userid, friendid); e != nil {
-		log.Error(ctx, "[AcceptMakeFriend] dao op failed", log.String("user_id", md["Token-User"]), log.String("friend_id", req.UserId), log.CError(e))
+	if e := s.relationDao.AcceptMakeFriend(ctx, accepter, req.UserId); e != nil {
+		log.Error(ctx, "[AcceptMakeFriend] dao op failed", log.String("accepter", accepter), log.String("friend_id", req.UserId), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
-	if e = s.relationDao.RedisDelUserRequest(ctx, userid, friendid, "user"); e != nil {
-		log.Error(ctx, "[AcceptMakeFriend] redis op failed", log.String("user_id", md["Token-User"]), log.String("friend_id", req.UserId), log.CError(e))
+	if e := s.relationDao.RedisDelUserRequest(ctx, accepter, req.UserId, "user"); e != nil {
+		log.Error(ctx, "[AcceptMakeFriend] redis op failed", log.String("accepter", accepter), log.String("friend_id", req.UserId), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	return &api.AcceptMakeFriendResp{}, nil
 }
 func (s *Service) RefuseMakeFriend(ctx context.Context, req *api.RefuseMakeFriendReq) (*api.RefuseMakeFriendResp, error) {
 	md := metadata.GetMetadata(ctx)
-	refuser, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[RefuseMakeFriend] token format wrong", log.String("refuser", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	userid, e := primitive.ObjectIDFromHex(req.UserId)
-	if e != nil {
-		log.Error(ctx, "[RefuseMakeFriend] userid format wrong", log.String("user_id", req.UserId), log.CError(e))
+	refuser := md["Token-User"]
+	if refuser == req.UserId {
 		return nil, ecode.ErrReq
 	}
-	if refuser.IsZero() || userid.IsZero() || refuser == userid {
-		return nil, ecode.ErrReq
-	}
-	if e = s.relationDao.RedisDelUserRequest(ctx, refuser, userid, "user"); e != nil {
-		log.Error(ctx, "[RefuseMakeFriend] redis op failed", log.String("refuser", md["Token-User"]), log.String("user_id", req.UserId), log.CError(e))
+	if e := s.relationDao.RedisDelUserRequest(ctx, refuser, req.UserId, "user"); e != nil {
+		log.Error(ctx, "[RefuseMakeFriend] redis op failed", log.String("refuser", refuser), log.String("user_id", req.UserId), log.CError(e))
 		return nil, ecode.ErrReq
 	}
 	return &api.RefuseMakeFriendResp{}, nil
 }
 func (s *Service) GroupInvite(ctx context.Context, req *api.GroupInviteReq) (*api.GroupInviteResp, error) {
 	md := metadata.GetMetadata(ctx)
-	inviter, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[GroupInvite] token format wrong", log.String("inviter", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	userid, e := primitive.ObjectIDFromHex(req.UserId)
-	if e != nil {
-		log.Error(ctx, "[GroupInvite] userid format wrong", log.String("user_id", req.UserId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	groupid, e := primitive.ObjectIDFromHex(req.GroupId)
-	if e != nil {
-		log.Error(ctx, "[GroupInvite] groupid format wrong", log.String("group_id", req.GroupId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	if inviter.IsZero() || userid.IsZero() || groupid.IsZero() || inviter == userid {
+	inviter := md["Token-User"]
+	if inviter == req.UserId {
 		return nil, ecode.ErrReq
 	}
 	//check user already set self's name
-	if _, e = s.relationDao.GetUserName(ctx, userid); e != nil {
+	if _, e := s.relationDao.GetUserName(ctx, req.UserId); e != nil {
 		log.Error(ctx, "[GroupInvite] check user's name failed", log.String("user_id", req.UserId), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	//check inviter permission
-	if info, e := s.relationDao.GetGroupMember(ctx, groupid, inviter); e != nil {
+	if info, e := s.relationDao.GetGroupMember(ctx, req.GroupId, inviter); e != nil {
 		if e == ecode.ErrGroupMemberNotExist {
 			e = ecode.ErrNotInGroup
 		}
-		log.Error(ctx, "[GroupInvite] get inviter's group info failed", log.String("inviter", md["Token-User"]), log.String("group_id", req.GroupId), log.CError(e))
+		log.Error(ctx, "[GroupInvite] get inviter's group info failed", log.String("inviter", inviter), log.String("group_id", req.GroupId), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	} else if info.Duty == 0 {
 		return nil, ecode.ErrPermission
 	}
 	//check current relation in user's view
-	if _, e = s.relationDao.GetUserRelation(ctx, userid, groupid, "group"); e != nil && e != ecode.ErrNotInGroup {
+	if _, e := s.relationDao.GetUserRelation(ctx, req.UserId, req.GroupId, "group"); e != nil && e != ecode.ErrNotInGroup {
 		log.Error(ctx, "[GroupInvite] check current relation in user's view failed",
 			log.String("user_id", req.UserId),
 			log.String("group_id", req.GroupId),
@@ -225,7 +183,7 @@ func (s *Service) GroupInvite(ctx context.Context, req *api.GroupInviteReq) (*ap
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	} else if e == nil {
 		//check current relation in group's view
-		if _, e = s.relationDao.GetGroupMember(ctx, groupid, userid); e != nil && e != ecode.ErrGroupMemberNotExist {
+		if _, e = s.relationDao.GetGroupMember(ctx, req.GroupId, req.UserId); e != nil && e != ecode.ErrGroupMemberNotExist {
 			log.Error(ctx, "[GroupInvite] check current relation in group's view failed",
 				log.String("group_id", req.GroupId),
 				log.String("user_id", req.UserId),
@@ -235,7 +193,7 @@ func (s *Service) GroupInvite(ctx context.Context, req *api.GroupInviteReq) (*ap
 			return &api.GroupInviteResp{}, nil
 		} else if max := config.AC.Service.MaxGroupMember; max != 0 {
 			//check group's current members count
-			if count, e := s.relationDao.CountGroupMembers(ctx, groupid, userid); e != nil {
+			if count, e := s.relationDao.CountGroupMembers(ctx, req.GroupId, req.UserId); e != nil {
 				log.Error(ctx, "[GroupInvite] check group's current members count failed", log.String("group_id", req.GroupId), log.CError(e))
 				return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 			} else if count >= uint64(max) {
@@ -245,7 +203,7 @@ func (s *Service) GroupInvite(ctx context.Context, req *api.GroupInviteReq) (*ap
 	} else {
 		if max := config.AC.Service.MaxUserRelation; max != 0 {
 			//check user's current relations count
-			if count, e := s.relationDao.CountUserRelations(ctx, userid, groupid, "group"); e != nil {
+			if count, e := s.relationDao.CountUserRelations(ctx, req.UserId, req.GroupId, "group"); e != nil {
 				log.Error(ctx, "[GroupInvite] check user's current relations count failed", log.String("user_id", req.UserId), log.CError(e))
 				return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 			} else if count >= uint64(max) {
@@ -254,7 +212,7 @@ func (s *Service) GroupInvite(ctx context.Context, req *api.GroupInviteReq) (*ap
 		}
 		if max := config.AC.Service.MaxGroupMember; max != 0 {
 			//check group's current relations count
-			if count, e := s.relationDao.CountGroupMembers(ctx, groupid, userid); e != nil {
+			if count, e := s.relationDao.CountGroupMembers(ctx, req.GroupId, req.UserId); e != nil {
 				log.Error(ctx, "[GroupInvite] check group's current members count failed", log.String("group_id", req.GroupId), log.CError(e))
 				return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 			} else if count >= uint64(max) {
@@ -262,9 +220,9 @@ func (s *Service) GroupInvite(ctx context.Context, req *api.GroupInviteReq) (*ap
 			}
 		}
 	}
-	if e = s.relationDao.RedisAddGroupInviteRequest(ctx, userid, groupid); e != nil {
+	if e := s.relationDao.RedisAddGroupInviteRequest(ctx, req.GroupId, req.UserId); e != nil {
 		log.Error(ctx, "[GroupInvite] redis op failed",
-			log.String("inviter", md["Token-User"]),
+			log.String("inviter", inviter),
 			log.String("group_id", req.GroupId),
 			log.String("user_id", req.UserId),
 			log.CError(e))
@@ -274,27 +232,15 @@ func (s *Service) GroupInvite(ctx context.Context, req *api.GroupInviteReq) (*ap
 }
 func (s *Service) AcceptGroupInvite(ctx context.Context, req *api.AcceptGroupInviteReq) (*api.AcceptGroupInviteResp, error) {
 	md := metadata.GetMetadata(ctx)
-	userid, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[AcceptGroupInvite] token format wrong", log.String("user_id", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	groupid, e := primitive.ObjectIDFromHex(req.GroupId)
-	if e != nil {
-		log.Error(ctx, "[AcceptGroupInvite] groupid format wrong", log.String("group_id", req.GroupId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	if userid.IsZero() || groupid.IsZero() {
-		return nil, ecode.ErrReq
-	}
-	if e = s.relationDao.RedisRefreshUserRequest(ctx, userid, groupid, "user"); e != nil {
-		log.Error(ctx, "[AcceptGroupInvite] redis op failed", log.String("user_id", md["Token-User"]), log.String("group_id", req.GroupId), log.CError(e))
+	accepter := md["Token-User"]
+	if e := s.relationDao.RedisRefreshUserRequest(ctx, accepter, req.GroupId, "group"); e != nil {
+		log.Error(ctx, "[AcceptGroupInvite] redis op failed", log.String("accepter", accepter), log.String("group_id", req.GroupId), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	if max := config.AC.Service.MaxUserRelation; max != 0 {
-		//check user's current relations count
-		if count, e := s.relationDao.CountUserRelations(ctx, userid, groupid, "group"); e != nil {
-			log.Error(ctx, "[AcceptGroupInvite] check user's current relations count failed", log.String("user_id", md["Token-User"]), log.CError(e))
+		//check accepter's current relations count
+		if count, e := s.relationDao.CountUserRelations(ctx, accepter, req.GroupId, "group"); e != nil {
+			log.Error(ctx, "[AcceptGroupInvite] check accepter's current relations count failed", log.String("accepter", accepter), log.CError(e))
 			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 		} else if count >= uint64(max) {
 			return nil, ecode.ErrSelfTooManyRelations
@@ -302,41 +248,29 @@ func (s *Service) AcceptGroupInvite(ctx context.Context, req *api.AcceptGroupInv
 	}
 	if max := config.AC.Service.MaxGroupMember; max != 0 {
 		//check group's current members count
-		if count, e := s.relationDao.CountGroupMembers(ctx, groupid, userid); e != nil {
+		if count, e := s.relationDao.CountGroupMembers(ctx, req.GroupId, accepter); e != nil {
 			log.Error(ctx, "[AcceptGroupInvite] check group's current members count failed", log.String("group_id", req.GroupId), log.CError(e))
 			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 		} else if count >= uint64(max) {
 			return nil, ecode.ErrGroupTooManyMembers
 		}
 	}
-	if e = s.relationDao.AcceptGroupInvite(ctx, userid, groupid); e != nil {
-		log.Error(ctx, "[AcceptGroupInvite] dao op failed", log.String("user_id", md["Token-User"]), log.String("group_id", req.GroupId), log.CError(e))
+	if e := s.relationDao.AcceptGroupInvite(ctx, accepter, req.GroupId); e != nil {
+		log.Error(ctx, "[AcceptGroupInvite] dao op failed", log.String("accepter", accepter), log.String("group_id", req.GroupId), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
-	if e = s.relationDao.RedisDelUserRequest(ctx, userid, groupid, "group"); e != nil {
-		log.Error(ctx, "[AcceptGroupInvite] redis op failed", log.String("user_id", md["Token-User"]), log.String("group_id", req.GroupId), log.CError(e))
+	if e := s.relationDao.RedisDelUserRequest(ctx, accepter, req.GroupId, "group"); e != nil {
+		log.Error(ctx, "[AcceptGroupInvite] redis op failed", log.String("accepter", accepter), log.String("group_id", req.GroupId), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	return &api.AcceptGroupInviteResp{}, nil
 }
 func (s *Service) RefuseGroupInvite(ctx context.Context, req *api.RefuseGroupInviteReq) (*api.RefuseGroupInviteResp, error) {
 	md := metadata.GetMetadata(ctx)
-	refuser, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[RefuseGroupInvite] token format wrong", log.String("refuser", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	groupid, e := primitive.ObjectIDFromHex(req.GroupId)
-	if e != nil {
-		log.Error(ctx, "[RefuseGroupInvite] groupid format wrong", log.String("group_id", req.GroupId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	if refuser.IsZero() || groupid.IsZero() {
-		return nil, ecode.ErrReq
-	}
-	if e = s.relationDao.RedisDelUserRequest(ctx, refuser, groupid, "group"); e != nil {
+	refuser := md["Token-User"]
+	if e := s.relationDao.RedisDelUserRequest(ctx, refuser, req.GroupId, "group"); e != nil {
 		log.Error(ctx, "[RefuseGroupInvite] redis op failed",
-			log.String("refuser", md["Token-User"]),
+			log.String("refuser", refuser),
 			log.String("group_id", req.GroupId),
 			log.CError(e))
 		return nil, ecode.ErrReq
@@ -345,46 +279,34 @@ func (s *Service) RefuseGroupInvite(ctx context.Context, req *api.RefuseGroupInv
 }
 func (s *Service) GroupApply(ctx context.Context, req *api.GroupApplyReq) (*api.GroupApplyResp, error) {
 	md := metadata.GetMetadata(ctx)
-	userid, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[GroupApply] token format wrong", log.String("user_id", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	groupid, e := primitive.ObjectIDFromHex(req.GroupId)
-	if e != nil {
-		log.Error(ctx, "[GroupApply] groupid format wrong", log.String("group_id", req.GroupId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	if userid.IsZero() || groupid.IsZero() {
-		return nil, ecode.ErrReq
-	}
-	//check user already set self's name
-	if _, e := s.relationDao.GetUserName(ctx, userid); e != nil {
-		log.Error(ctx, "[GroupApply] check user's name failed", log.String("user_id", md["Token-User"]), log.CError(e))
+	requester := md["Token-User"]
+	//check requester already set self's name
+	if _, e := s.relationDao.GetUserName(ctx, requester); e != nil {
+		log.Error(ctx, "[GroupApply] check requester's name failed", log.String("requester", requester), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	//check current relation in group's view
-	if _, e = s.relationDao.GetGroupMember(ctx, groupid, userid); e != nil && e != ecode.ErrGroupMemberNotExist {
+	if _, e := s.relationDao.GetGroupMember(ctx, req.GroupId, requester); e != nil && e != ecode.ErrGroupMemberNotExist {
 		log.Error(ctx, "[GroupApply] check current relation in group's view failed",
 			log.String("group_id", req.GroupId),
-			log.String("user_id", md["Token-User"]),
+			log.String("requester", requester),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	} else if e == nil {
-		//check current relation in user's view
-		if _, e = s.relationDao.GetUserRelation(ctx, userid, groupid, "group"); e != nil && e != ecode.ErrNotInGroup {
-			log.Error(ctx, "[GroupApply] check current relation in user's view failed",
-				log.String("user_id", md["Token-User"]),
+		//check current relation in requester's view
+		if _, e = s.relationDao.GetUserRelation(ctx, requester, req.GroupId, "group"); e != nil && e != ecode.ErrNotInGroup {
+			log.Error(ctx, "[GroupApply] check current relation in requester's view failed",
+				log.String("requester", requester),
 				log.String("group_id", req.GroupId),
 				log.CError(e))
 			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 		} else if e == nil {
 			return &api.GroupApplyResp{}, nil
 		} else if max := config.AC.Service.MaxUserRelation; max != 0 {
-			//check user's current relations count
-			if count, e := s.relationDao.CountUserRelations(ctx, userid, groupid, "group"); e != nil {
-				log.Error(ctx, "[GroupApply] check user's current relations count failed",
-					log.String("user_id", md["Token-User"]),
+			//check requester's current relations count
+			if count, e := s.relationDao.CountUserRelations(ctx, requester, req.GroupId, "group"); e != nil {
+				log.Error(ctx, "[GroupApply] check requester's current relations count failed",
+					log.String("requester", requester),
 					log.String("group_id", req.GroupId),
 					log.CError(e))
 				return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
@@ -395,26 +317,26 @@ func (s *Service) GroupApply(ctx context.Context, req *api.GroupApplyReq) (*api.
 	} else {
 		if max := config.AC.Service.MaxGroupMember; max != 0 {
 			//check group's current members count
-			if count, e := s.relationDao.CountGroupMembers(ctx, groupid, userid); e != nil {
-				log.Error(ctx, "[GroupApply] check group's current relations count failed", log.String("group_id", groupid.Hex()), log.CError(e))
+			if count, e := s.relationDao.CountGroupMembers(ctx, req.GroupId, requester); e != nil {
+				log.Error(ctx, "[GroupApply] check group's current relations count failed", log.String("group_id", req.GroupId), log.CError(e))
 				return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 			} else if count >= uint64(max) {
 				return nil, ecode.ErrGroupTooManyMembers
 			}
 		}
 		if max := config.AC.Service.MaxUserRelation; max != 0 {
-			//check user's current relations count
-			if count, e := s.relationDao.CountUserRelations(ctx, userid, groupid, "group"); e != nil {
-				log.Error(ctx, "[GroupApply] check user's current relations count failed", log.String("user_id", md["Token-User"]), log.CError(e))
+			//check requester's current relations count
+			if count, e := s.relationDao.CountUserRelations(ctx, requester, req.GroupId, "group"); e != nil {
+				log.Error(ctx, "[GroupApply] check requester's current relations count failed", log.String("requester", requester), log.CError(e))
 				return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 			} else if count >= uint64(max) {
 				return nil, ecode.ErrSelfTooManyRelations
 			}
 		}
 	}
-	if e = s.relationDao.RedisAddGroupApplyRequest(ctx, userid, groupid); e != nil {
+	if e := s.relationDao.RedisAddGroupApplyRequest(ctx, requester, req.GroupId); e != nil {
 		log.Error(ctx, "[GroupApply] redis op failed",
-			log.String("user_id", md["Token-User"]),
+			log.String("requester", requester),
 			log.String("group_id", req.GroupId),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
@@ -423,28 +345,14 @@ func (s *Service) GroupApply(ctx context.Context, req *api.GroupApplyReq) (*api.
 }
 func (s *Service) AcceptGroupApply(ctx context.Context, req *api.AcceptGroupApplyReq) (*api.AcceptGroupApplyResp, error) {
 	md := metadata.GetMetadata(ctx)
-	operator, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[AcceptGroupApply] token format wrong", log.String("operator", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	groupid, e := primitive.ObjectIDFromHex(req.GroupId)
-	if e != nil {
-		log.Error(ctx, "[AcceptGroupApply] groupid format wrong", log.String("group_id", req.GroupId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	userid, e := primitive.ObjectIDFromHex(req.UserId)
-	if e != nil {
-		log.Error(ctx, "[AcceptGroupApply] userid format wrong", log.String("user_id", req.UserId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	if operator.IsZero() || groupid.IsZero() || userid.IsZero() || operator == userid {
+	accepter := md["Token-User"]
+	if accepter == req.UserId {
 		return nil, ecode.ErrReq
 	}
 	//check permission
-	if info, e := s.relationDao.GetGroupMember(ctx, groupid, operator); e != nil {
-		log.Error(ctx, "[AcceptGroupApply] get operator's group info failed",
-			log.String("operator", md["Token-User"]),
+	if info, e := s.relationDao.GetGroupMember(ctx, req.GroupId, accepter); e != nil {
+		log.Error(ctx, "[AcceptGroupApply] get accepter's group info failed",
+			log.String("accepter", accepter),
 			log.String("group_id", req.GroupId),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
@@ -453,7 +361,7 @@ func (s *Service) AcceptGroupApply(ctx context.Context, req *api.AcceptGroupAppl
 	}
 	if max := config.AC.Service.MaxGroupMember; max != 0 {
 		//check group's current members count
-		if count, e := s.relationDao.CountGroupMembers(ctx, groupid, userid); e != nil {
+		if count, e := s.relationDao.CountGroupMembers(ctx, req.GroupId, req.UserId); e != nil {
 			log.Error(ctx, "[AcceptGroupApply] check group's current members count failed", log.String("group_id", req.GroupId), log.CError(e))
 			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 		} else if count >= uint64(max) {
@@ -461,35 +369,35 @@ func (s *Service) AcceptGroupApply(ctx context.Context, req *api.AcceptGroupAppl
 		}
 	}
 	if max := config.AC.Service.MaxUserRelation; max != 0 {
-		//check user's current relations count
-		if count, e := s.relationDao.CountUserRelations(ctx, userid, groupid, "group"); e != nil {
-			log.Error(ctx, "[AcceptGroupApply] check user's current relations count failed", log.String("user_id", req.UserId), log.CError(e))
+		//check requester's current relations count
+		if count, e := s.relationDao.CountUserRelations(ctx, req.UserId, req.GroupId, "group"); e != nil {
+			log.Error(ctx, "[AcceptGroupApply] check requester's current relations count failed", log.String("requester", req.UserId), log.CError(e))
 			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 		} else if count >= uint64(max) {
 			return nil, ecode.ErrTargetTooManyRelations
 		}
 	}
-	if e = s.relationDao.RedisRefreshGroupRequest(ctx, groupid, userid); e != nil {
+	if e := s.relationDao.RedisRefreshGroupRequest(ctx, req.GroupId, req.UserId); e != nil {
 		log.Error(ctx, "[AcceptGroupApply] redis op failed",
-			log.String("operator", md["Token-User"]),
+			log.String("accepter", accepter),
 			log.String("group_id", req.GroupId),
-			log.String("user_id", req.UserId),
+			log.String("requester", req.UserId),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
-	if e = s.relationDao.AcceptGroupApply(ctx, groupid, userid); e != nil {
+	if e := s.relationDao.AcceptGroupApply(ctx, req.GroupId, req.UserId); e != nil {
 		log.Error(ctx, "[AcceptGroupApply] dao op failed",
-			log.String("operator", md["Token-User"]),
+			log.String("accepter", accepter),
 			log.String("group_id", req.GroupId),
-			log.String("user_id", req.UserId),
+			log.String("requester", req.UserId),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
-	if e = s.relationDao.RedisDelGroupRequest(ctx, groupid, userid); e != nil {
+	if e := s.relationDao.RedisDelGroupRequest(ctx, req.GroupId, req.UserId); e != nil {
 		log.Error(ctx, "[AcceptGroupApply] redis op failed",
-			log.String("operator", md["Token-User"]),
+			log.String("accepter", accepter),
 			log.String("group_id", req.GroupId),
-			log.String("user_id", req.UserId),
+			log.String("requester", req.UserId),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
@@ -497,39 +405,22 @@ func (s *Service) AcceptGroupApply(ctx context.Context, req *api.AcceptGroupAppl
 }
 func (s *Service) RefuseGroupApply(ctx context.Context, req *api.RefuseGroupApplyReq) (*api.RefuseGroupApplyResp, error) {
 	md := metadata.GetMetadata(ctx)
-	refuser, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[RefuseGroupApply] token format wrong", log.String("refuser", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	groupid, e := primitive.ObjectIDFromHex(req.GroupId)
-	if e != nil {
-		log.Error(ctx, "[RefuseGroupApply] groupid format wrong", log.String("group_id", req.GroupId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	userid, e := primitive.ObjectIDFromHex(req.UserId)
-	if e != nil {
-		log.Error(ctx, "[RefuseGroupApply] userid format wrong", log.String("user_id", req.UserId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	if refuser.IsZero() || groupid.IsZero() || userid.IsZero() || refuser == userid {
-		return nil, ecode.ErrReq
-	}
+	refuser := md["Token-User"]
 	//check refuser permission
-	if info, e := s.relationDao.GetGroupMember(ctx, groupid, refuser); e != nil {
+	if info, e := s.relationDao.GetGroupMember(ctx, req.GroupId, refuser); e != nil {
 		log.Error(ctx, "[RefuseGroupApply] get refuser's group info failed",
-			log.String("refuser", md["Token-User"]),
+			log.String("refuser", refuser),
 			log.String("group_id", req.GroupId),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	} else if info.Duty == 0 {
 		return nil, ecode.ErrPermission
 	}
-	if e := s.relationDao.RedisDelGroupRequest(ctx, groupid, userid); e != nil {
+	if e := s.relationDao.RedisDelGroupRequest(ctx, req.GroupId, req.UserId); e != nil {
 		log.Error(ctx, "[RefuseGroupApply] redis op failed",
-			log.String("refuser", md["Token-User"]),
+			log.String("refuser", refuser),
 			log.String("group_id", req.GroupId),
-			log.String("user_id", req.UserId),
+			log.String("requester", req.UserId),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
@@ -537,31 +428,22 @@ func (s *Service) RefuseGroupApply(ctx context.Context, req *api.RefuseGroupAppl
 }
 func (s *Service) DelFriend(ctx context.Context, req *api.DelFriendReq) (*api.DelFriendResp, error) {
 	md := metadata.GetMetadata(ctx)
-	userid, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[DelFriend] token format wrong", log.String("user_id", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	friendid, e := primitive.ObjectIDFromHex(req.UserId)
-	if e != nil {
-		log.Error(ctx, "[DelFriend] friendid format wrong", log.String("friend_id", req.UserId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	if userid.IsZero() || friendid.IsZero() || userid == friendid {
+	operator := md["Token-User"]
+	if operator == req.UserId {
 		return nil, ecode.ErrReq
 	}
 	//check current relation in friend's view
-	if _, e = s.relationDao.GetUserRelation(ctx, friendid, userid, "user"); e != nil && e != ecode.ErrNotFriends {
+	if _, e := s.relationDao.GetUserRelation(ctx, req.UserId, operator, "user"); e != nil && e != ecode.ErrNotFriends {
 		log.Error(ctx, "[DelFriend] check current relation in friend's view failed",
-			log.String("user_id", md["Token-User"]),
+			log.String("operator", operator),
 			log.String("friend_id", req.UserId),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	} else if e == ecode.ErrNotFriends {
-		//check current relation in user's view
-		if _, e = s.relationDao.GetUserRelation(ctx, userid, friendid, "user"); e != nil && e != ecode.ErrNotFriends {
-			log.Error(ctx, "[DelFriend] check current relation in user's view failed",
-				log.String("user_id", md["Token-User"]),
+		//check current relation in operator's view
+		if _, e := s.relationDao.GetUserRelation(ctx, operator, req.UserId, "user"); e != nil && e != ecode.ErrNotFriends {
+			log.Error(ctx, "[DelFriend] check current relation in operator's view failed",
+				log.String("operator", operator),
 				log.String("friend_id", req.UserId),
 				log.CError(e))
 			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
@@ -569,39 +451,27 @@ func (s *Service) DelFriend(ctx context.Context, req *api.DelFriendReq) (*api.De
 			return &api.DelFriendResp{}, nil
 		}
 	}
-	if e = s.relationDao.DelFriend(ctx, userid, friendid); e != nil {
-		log.Error(ctx, "[DelFriend] dao op failed", log.String("user_id", md["Token-User"]), log.String("friend_id", req.UserId), log.CError(e))
+	if e := s.relationDao.DelFriend(ctx, operator, req.UserId); e != nil {
+		log.Error(ctx, "[DelFriend] dao op failed", log.String("operator", operator), log.String("friend_id", req.UserId), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	return &api.DelFriendResp{}, nil
 }
 func (s *Service) LeaveGroup(ctx context.Context, req *api.LeaveGroupReq) (*api.LeaveGroupResp, error) {
 	md := metadata.GetMetadata(ctx)
-	userid, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[LeaveGroup] token format wrong", log.String("user_id", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	groupid, e := primitive.ObjectIDFromHex(req.GroupId)
-	if e != nil {
-		log.Error(ctx, "[LeaveGroup] groupid format wrong", log.String("group_id", req.GroupId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	if userid.IsZero() || groupid.IsZero() {
-		return nil, ecode.ErrReq
-	}
+	operator := md["Token-User"]
 	//check current relation in group's view
-	if _, e := s.relationDao.GetGroupMember(ctx, groupid, userid); e != nil && e != ecode.ErrGroupMemberNotExist {
+	if _, e := s.relationDao.GetGroupMember(ctx, req.GroupId, operator); e != nil && e != ecode.ErrGroupMemberNotExist {
 		log.Error(ctx, "[LeaveGroup] check current relation in group's view failed",
-			log.String("user_id", md["Token-User"]),
+			log.String("operator", operator),
 			log.String("group_id", req.GroupId),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	} else if e == ecode.ErrGroupMemberNotExist {
-		//check current relation in user's view
-		if _, e = s.relationDao.GetUserRelation(ctx, userid, groupid, "group"); e != nil && e != ecode.ErrNotInGroup {
-			log.Error(ctx, "[LeaveGroup] check current relation in user's view failed",
-				log.String("user_id", md["Token-User"]),
+		//check current relation in operator's view
+		if _, e = s.relationDao.GetUserRelation(ctx, operator, req.GroupId, "group"); e != nil && e != ecode.ErrNotInGroup {
+			log.Error(ctx, "[LeaveGroup] check current relation in operator's view failed",
+				log.String("operator", operator),
 				log.String("group_id", req.GroupId),
 				log.CError(e))
 			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
@@ -609,9 +479,9 @@ func (s *Service) LeaveGroup(ctx context.Context, req *api.LeaveGroupReq) (*api.
 			return &api.LeaveGroupResp{}, nil
 		}
 	}
-	if e = s.relationDao.LeaveGroup(ctx, userid, groupid); e != nil {
+	if e := s.relationDao.LeaveGroup(ctx, operator, req.GroupId); e != nil {
 		log.Error(ctx, "[LeaveGroup] dao op failed",
-			log.String("user_id", md["Token-User"]),
+			log.String("operator", operator),
 			log.String("group_id", req.GroupId),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
@@ -620,27 +490,13 @@ func (s *Service) LeaveGroup(ctx context.Context, req *api.LeaveGroupReq) (*api.
 }
 func (s *Service) KickGroup(ctx context.Context, req *api.KickGroupReq) (*api.KickGroupResp, error) {
 	md := metadata.GetMetadata(ctx)
-	operator, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[KickGroup] token format wrong", log.String("operator", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	groupid, e := primitive.ObjectIDFromHex(req.GroupId)
-	if e != nil {
-		log.Error(ctx, "[KickGroup] groupid format wrong", log.String("group_id", req.GroupId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	member, e := primitive.ObjectIDFromHex(req.UserId)
-	if e != nil {
-		log.Error(ctx, "[KickGroup] userid format wrong", log.String("user_id", req.UserId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	if operator.IsZero() || groupid.IsZero() || member.IsZero() || operator == member {
+	operator := md["Token-User"]
+	if operator == req.UserId {
 		return nil, ecode.ErrReq
 	}
 	var userinfo *model.RelationTarget
 	//check current relation in user's view
-	if _, e = s.relationDao.GetUserRelation(ctx, member, groupid, "group"); e != nil && e != ecode.ErrNotInGroup {
+	if _, e := s.relationDao.GetUserRelation(ctx, req.UserId, req.GroupId, "group"); e != nil && e != ecode.ErrNotInGroup {
 		log.Error(ctx, "[KickGroup] check current relation in user's view failed",
 			log.String("user_id", req.UserId),
 			log.String("group_id", req.GroupId),
@@ -648,7 +504,7 @@ func (s *Service) KickGroup(ctx context.Context, req *api.KickGroupReq) (*api.Ki
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	} else if e == ecode.ErrNotInGroup {
 		//check current relation in group's view
-		if userinfo, e = s.relationDao.GetGroupMember(ctx, groupid, member); e != nil && e != ecode.ErrGroupMemberNotExist {
+		if userinfo, e = s.relationDao.GetGroupMember(ctx, req.GroupId, req.UserId); e != nil && e != ecode.ErrGroupMemberNotExist {
 			log.Error(ctx, "[KickGroup] check current relation in group's view failed",
 				log.String("group_id", req.GroupId),
 				log.String("user_id", req.UserId),
@@ -659,21 +515,21 @@ func (s *Service) KickGroup(ctx context.Context, req *api.KickGroupReq) (*api.Ki
 		}
 	}
 	//check operator permission
-	if info, e := s.relationDao.GetGroupMember(ctx, groupid, operator); e != nil {
+	if info, e := s.relationDao.GetGroupMember(ctx, req.GroupId, operator); e != nil {
 		if e == ecode.ErrGroupMemberNotExist {
 			e = ecode.ErrNotInGroup
 		}
 		log.Error(ctx, "[KickGroup] get operator's group info failed",
-			log.String("operator", md["Token-User"]),
+			log.String("operator", operator),
 			log.String("group_id", req.GroupId),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	} else if info.Duty <= userinfo.Duty {
 		return nil, ecode.ErrPermission
 	}
-	if e = s.relationDao.KickGroup(ctx, groupid, member); e != nil {
+	if e := s.relationDao.KickGroup(ctx, req.GroupId, req.UserId); e != nil {
 		log.Error(ctx, "[KickGroup] dao op failed",
-			log.String("operator", md["Token-User"]),
+			log.String("operator", operator),
 			log.String("group_id", req.GroupId),
 			log.String("user_id", req.UserId),
 			log.CError(e))
@@ -683,17 +539,10 @@ func (s *Service) KickGroup(ctx context.Context, req *api.KickGroupReq) (*api.Ki
 }
 func (s *Service) Relations(ctx context.Context, req *api.RelationsReq) (*api.RelationsResp, error) {
 	md := metadata.GetMetadata(ctx)
-	userid, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[Relations] token format wrong", log.String("user_id", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	if userid.IsZero() {
-		return nil, ecode.ErrReq
-	}
+	userid := md["Token-User"]
 	relations, e := s.relationDao.GetUserRelations(ctx, userid)
 	if e != nil {
-		log.Error(ctx, "[Relations] dao op failed", log.String("user_id", md["Token-User"]), log.CError(e))
+		log.Error(ctx, "[Relations] dao op failed", log.String("user_id", userid), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	resp := &api.RelationsResp{
@@ -703,12 +552,12 @@ func (s *Service) Relations(ctx context.Context, req *api.RelationsReq) (*api.Re
 	strs := make([]string, 0, len(relations))
 	for _, relation := range relations {
 		resp.Relations = append(resp.Relations, &api.RelationInfo{
-			Target:     relation.Target.Hex(),
+			Target:     relation.Target,
 			TargetType: relation.TargetType,
 			Name:       relation.Name,
 			Duty:       uint32(relation.Duty),
 		})
-		strs = append(strs, relation.TargetType+"_"+relation.Target.Hex()+"_"+relation.Name)
+		strs = append(strs, relation.TargetType+"_"+relation.Target+"_"+relation.Name)
 	}
 	sort.Strings(strs)
 	hashstr := sha256.Sum256(common.STB(strings.Join(strs, ",")))
@@ -720,42 +569,30 @@ func (s *Service) Relations(ctx context.Context, req *api.RelationsReq) (*api.Re
 }
 func (s *Service) GroupMembers(ctx context.Context, req *api.GroupMembersReq) (*api.GroupMembersResp, error) {
 	md := metadata.GetMetadata(ctx)
-	userid, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[GroupMembers] token format wrong", log.String("user_id", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	groupid, e := primitive.ObjectIDFromHex(req.GroupId)
-	if e != nil {
-		log.Error(ctx, "[GroupMembers] groupid format wrong", log.String("group_id", req.GroupId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	if userid.IsZero() || groupid.IsZero() {
-		return nil, ecode.ErrReq
-	}
+	userid := md["Token-User"]
 	//check current relation in user's view
-	if _, e = s.relationDao.GetUserRelation(ctx, userid, groupid, "group"); e != nil {
+	if _, e := s.relationDao.GetUserRelation(ctx, userid, req.GroupId, "group"); e != nil {
 		log.Error(ctx, "[GroupMembers] check current relation in user's view failed",
-			log.String("user_id", md["Token-User"]),
+			log.String("user_id", userid),
 			log.String("group_id", req.GroupId),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	//check current relation in group's view
-	if _, e = s.relationDao.GetGroupMember(ctx, groupid, userid); e != nil {
+	if _, e := s.relationDao.GetGroupMember(ctx, req.GroupId, userid); e != nil {
 		if e == ecode.ErrGroupMemberNotExist {
 			e = ecode.ErrNotInGroup
 		}
 		log.Error(ctx, "[GroupMembers] check current relation in group's view failed",
 			log.String("group_id", req.GroupId),
-			log.String("user_id", md["Token-User"]),
+			log.String("user_id", userid),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
-	members, e := s.relationDao.GetGroupMembers(ctx, groupid)
+	members, e := s.relationDao.GetGroupMembers(ctx, req.GroupId)
 	if e != nil {
 		log.Error(ctx, "[GroupMembers] dao op failed",
-			log.String("user_id", md["Token-User"]),
+			log.String("user_id", userid),
 			log.String("group_id", req.GroupId),
 			log.CError(e))
 		return nil, e
@@ -767,12 +604,12 @@ func (s *Service) GroupMembers(ctx context.Context, req *api.GroupMembersReq) (*
 	strs := make([]string, 0, len(members))
 	for _, member := range members {
 		resp.Members = append(resp.Members, &api.RelationInfo{
-			Target:     member.Target.Hex(),
+			Target:     member.Target,
 			TargetType: "user",
 			Name:       member.Name,
 			Duty:       uint32(member.Duty),
 		})
-		strs = append(strs, member.Target.Hex()+"_"+strconv.Itoa(int(member.Duty))+"_"+member.Name)
+		strs = append(strs, member.Target+"_"+strconv.Itoa(int(member.Duty))+"_"+member.Name)
 	}
 	sort.Strings(strs)
 	hashstr := sha256.Sum256(common.STB(strings.Join(strs, ",")))
@@ -784,76 +621,40 @@ func (s *Service) GroupMembers(ctx context.Context, req *api.GroupMembersReq) (*
 }
 func (s *Service) UpdateUserRelationName(ctx context.Context, req *api.UpdateUserRelationNameReq) (*api.UpdateUserRelationNameResp, error) {
 	md := metadata.GetMetadata(ctx)
-	userid, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[UpdateUserRelationName] token format wrong", log.String("user_id", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	target, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[UpdateUserRelationName] target format wrong", log.String("target", req.Target), log.String("target_type", req.TargetType), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	if userid.IsZero() || target.IsZero() {
-		return nil, ecode.ErrReq
-	}
-	//check current relation and current name in user's view
-	info, e := s.relationDao.GetUserRelation(ctx, userid, target, req.TargetType)
-	if e != nil {
-		log.Error(ctx, "[UpdateUserRelationName] get user's relation info failed",
-			log.String("user_id", md["Token-User"]),
-			log.String("target", req.Target),
-			log.String("target_type", req.TargetType),
-			log.CError(e))
-		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
-	}
-	if info.Name == req.NewName {
-		return &api.UpdateUserRelationNameResp{}, nil
-	}
-	if e = s.relationDao.UpdateUserRelationName(ctx, userid, target, req.TargetType, req.NewName); e != nil {
-		log.Error(ctx, "[UpdateUserRelationName] dao op failed",
-			log.String("user_id", md["Token-User"]),
-			log.String("target", req.Target),
-			log.String("target_type", req.TargetType),
-			log.CError(e))
-		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	userid := md["Token-User"]
+	if req.TargetType == "user" && req.Target == userid {
+		//update self's name
+		if e := s.relationDao.SetUserName(ctx, userid, req.NewName); e != nil {
+			log.Error(ctx, "[UpdateUserRelationName] dao op failed",
+				log.String("user_id", userid),
+				log.String("target", req.Target),
+				log.String("target_type", req.TargetType),
+				log.String("new_name", req.NewName),
+				log.CError(e))
+			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+		}
+	} else {
+		//update other's name
+		if e := s.relationDao.UpdateUserRelationName(ctx, userid, req.Target, req.TargetType, req.NewName); e != nil {
+			log.Error(ctx, "[UpdateUserRelationName] dao op failed",
+				log.String("user_id", userid),
+				log.String("target", req.Target),
+				log.String("target_type", req.TargetType),
+				log.String("new_name", req.NewName),
+				log.CError(e))
+			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+		}
 	}
 	return &api.UpdateUserRelationNameResp{}, nil
 }
 func (s *Service) UpdateNameInGroup(ctx context.Context, req *api.UpdateNameInGroupReq) (*api.UpdateNameInGroupResp, error) {
 	md := metadata.GetMetadata(ctx)
-	userid, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[UpdateNameInGroup] token format wrong", log.String("user_id", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	groupid, e := primitive.ObjectIDFromHex(req.GroupId)
-	if e != nil {
-		log.Error(ctx, "[UpdateNameInGroup] groupid format wrong", log.String("group_id", req.GroupId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	if userid.IsZero() || groupid.IsZero() {
-		return nil, ecode.ErrReq
-	}
-	//check current relation and current name in group's view
-	info, e := s.relationDao.GetGroupMember(ctx, groupid, userid)
-	if e != nil {
-		if e == ecode.ErrGroupMemberNotExist {
-			e = ecode.ErrNotInGroup
-		}
-		log.Error(ctx, "[UpdateNameInGroup] get user's group info failed",
-			log.String("user_id", md["Token-User"]),
-			log.String("group_id", req.GroupId),
-			log.CError(e))
-		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
-	}
-	if info.Name == req.NewName {
-		return &api.UpdateNameInGroupResp{}, nil
-	}
-	if e = s.relationDao.UpdateNameInGroup(ctx, userid, groupid, req.NewName); e != nil {
+	userid := md["Token-User"]
+	if e := s.relationDao.UpdateNameInGroup(ctx, userid, req.GroupId, req.NewName); e != nil {
 		log.Error(ctx, "[UpdateNameInGroup] dao op failed",
-			log.String("user_id", md["Token-User"]),
+			log.String("user_id", userid),
 			log.String("group_id", req.GroupId),
+			log.String("new_name", req.NewName),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
@@ -861,26 +662,9 @@ func (s *Service) UpdateNameInGroup(ctx context.Context, req *api.UpdateNameInGr
 }
 func (s *Service) UpdateDutyInGroup(ctx context.Context, req *api.UpdateDutyInGroupReq) (*api.UpdateDutyInGroupResp, error) {
 	md := metadata.GetMetadata(ctx)
-	operator, e := primitive.ObjectIDFromHex(md["Token-User"])
-	if e != nil {
-		log.Error(ctx, "[UpdateDutyInGroup] token format wrong", log.String("operator", md["Token-User"]), log.CError(e))
-		return nil, ecode.ErrToken
-	}
-	groupid, e := primitive.ObjectIDFromHex(req.GroupId)
-	if e != nil {
-		log.Error(ctx, "[UpdateDutyInGroup] groupid format wrong", log.String("group_id", req.GroupId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	member, e := primitive.ObjectIDFromHex(req.UserId)
-	if e != nil {
-		log.Error(ctx, "[UpdateDutyInGroup] userid format wrong", log.String("user_id", req.UserId), log.CError(e))
-		return nil, ecode.ErrReq
-	}
-	if operator.IsZero() || groupid.IsZero() || member.IsZero() || operator == member {
-		return nil, ecode.ErrReq
-	}
+	operator := md["Token-User"]
 	//check user permission
-	userinfo, e := s.relationDao.GetGroupMember(ctx, groupid, member)
+	userinfo, e := s.relationDao.GetGroupMember(ctx, req.GroupId, req.UserId)
 	if e != nil {
 		log.Error(ctx, "[UpdateDutyInGroup] get user's group info failed",
 			log.String("user_id", req.UserId),
@@ -892,13 +676,13 @@ func (s *Service) UpdateDutyInGroup(ctx context.Context, req *api.UpdateDutyInGr
 		return &api.UpdateDutyInGroupResp{}, nil
 	}
 	//check operator permission
-	operatorinfo, e := s.relationDao.GetGroupMember(ctx, groupid, operator)
+	operatorinfo, e := s.relationDao.GetGroupMember(ctx, req.GroupId, operator)
 	if e != nil {
 		if e == ecode.ErrGroupMemberNotExist {
 			e = ecode.ErrNotInGroup
 		}
 		log.Error(ctx, "[UpdateDutyInGroup] get operator's group info failed",
-			log.String("operator", md["Token-User"]),
+			log.String("operator", operator),
 			log.String("group_id", req.GroupId),
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
@@ -906,9 +690,9 @@ func (s *Service) UpdateDutyInGroup(ctx context.Context, req *api.UpdateDutyInGr
 	if operatorinfo.Duty == 0 || operatorinfo.Duty <= uint8(req.NewDuty) || operatorinfo.Duty <= userinfo.Duty {
 		return nil, ecode.ErrPermission
 	}
-	if e = s.relationDao.UpdateDutyInGroup(ctx, member, groupid, uint8(req.NewDuty)); e != nil {
+	if e = s.relationDao.UpdateDutyInGroup(ctx, req.UserId, req.GroupId, uint8(req.NewDuty)); e != nil {
 		log.Error(ctx, "[UpdateDutyInGroup] dao op failed",
-			log.String("operator", md["Token-User"]),
+			log.String("operator", operator),
 			log.String("group_id", req.GroupId),
 			log.String("user_id", req.UserId),
 			log.Uint64("new_duty", uint64(req.NewDuty)),

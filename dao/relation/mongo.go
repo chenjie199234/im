@@ -13,18 +13,18 @@ import (
 )
 
 // friend's relation should be add first,because the request will not be consumed if failed and user will retry accept the request
-func (d *Dao) MongoAcceptMakeFriend(ctx context.Context, userid, friendid primitive.ObjectID) (username, friendname string, e error) {
+func (d *Dao) MongoAcceptMakeFriend(ctx context.Context, userid string, friendid string) (username, friendname string, e error) {
 	filter := bson.M{
 		"$or": bson.A{
-			bson.M{"main": userid, "main_type": "user", "sub": primitive.NilObjectID, "sub_type": "user"},
-			bson.M{"main": friendid, "main_type": "user", "sub": primitive.NilObjectID, "sub_type": "user"},
+			bson.M{"main": userid, "main_type": "user", "sub": "", "sub_type": "user"},
+			bson.M{"main": friendid, "main_type": "user", "sub": "", "sub_type": "user"},
 		},
 	}
 	var cursor *mongo.Cursor
 	if cursor, e = d.mongo.Database("im").Collection("relation").Find(ctx, filter); e != nil {
 		return
 	}
-	all := make([]*model.Relation, 0, cursor.RemainingBatchLength())
+	all := make([]*model.Relation, 0, 2)
 	if e = cursor.All(ctx, &all); e != nil {
 		return
 	}
@@ -32,7 +32,7 @@ func (d *Dao) MongoAcceptMakeFriend(ctx context.Context, userid, friendid primit
 		e = ecode.ErrDBDataBroken
 		return
 	}
-	if all[0].Main.Hex() == userid.Hex() {
+	if all[0].Main == userid {
 		username = all[0].Name
 		friendname = all[1].Name
 	} else {
@@ -60,18 +60,18 @@ func (d *Dao) MongoAcceptMakeFriend(ctx context.Context, userid, friendid primit
 }
 
 // group's relation should be add first,because the request will not be consumed if failed and user will retry accept the request
-func (d *Dao) MongoAcceptGroupInvite(ctx context.Context, userid, groupid primitive.ObjectID) (username, groupname string, e error) {
+func (d *Dao) MongoAcceptGroupInvite(ctx context.Context, userid, groupid string) (username, groupname string, e error) {
 	filter := bson.M{
 		"$or": bson.A{
-			bson.M{"main": userid, "main_type": "user", "sub": primitive.NilObjectID, "sub_type": "user"},
-			bson.M{"main": groupid, "main_type": "group", "sub": primitive.NilObjectID, "sub_type": "user"},
+			bson.M{"main": userid, "main_type": "user", "sub": "", "sub_type": "user"},
+			bson.M{"main": groupid, "main_type": "group", "sub": "", "sub_type": "user"},
 		},
 	}
 	var cursor *mongo.Cursor
 	if cursor, e = d.mongo.Database("im").Collection("relation").Find(ctx, filter); e != nil {
 		return
 	}
-	all := make([]*model.Relation, 0, cursor.RemainingBatchLength())
+	all := make([]*model.Relation, 0, 2)
 	if e = cursor.All(ctx, &all); e != nil {
 		return
 	}
@@ -79,7 +79,7 @@ func (d *Dao) MongoAcceptGroupInvite(ctx context.Context, userid, groupid primit
 		e = ecode.ErrDBDataBroken
 		return
 	}
-	if all[0].Main.Hex() == userid.Hex() {
+	if all[0].Main == userid {
 		username = all[0].Name
 		groupname = all[1].Name
 	} else {
@@ -109,11 +109,11 @@ func (d *Dao) MongoAcceptGroupInvite(ctx context.Context, userid, groupid primit
 }
 
 // user's relation should be add first,because the request will not be consumed if failed and group's admin will retry accept the request
-func (d *Dao) MongoAcceptGroupApply(ctx context.Context, groupid, userid primitive.ObjectID) (username, groupname string, e error) {
+func (d *Dao) MongoAcceptGroupApply(ctx context.Context, groupid, userid string) (username, groupname string, e error) {
 	filter := bson.M{
 		"$or": bson.A{
-			bson.M{"main": userid, "main_type": "user", "sub": primitive.NilObjectID, "sub_type": "user"},
-			bson.M{"main": groupid, "main_type": "group", "sub": primitive.NilObjectID, "sub_type": "user"},
+			bson.M{"main": userid, "main_type": "user", "sub": "", "sub_type": "user"},
+			bson.M{"main": groupid, "main_type": "group", "sub": "", "sub_type": "user"},
 		},
 	}
 	var cursor *mongo.Cursor
@@ -128,7 +128,7 @@ func (d *Dao) MongoAcceptGroupApply(ctx context.Context, groupid, userid primiti
 		e = ecode.ErrDBDataBroken
 		return
 	}
-	if all[0].Main.Hex() == userid.Hex() {
+	if all[0].Main == userid {
 		username = all[0].Name
 		groupname = all[1].Name
 	} else {
@@ -153,12 +153,12 @@ func (d *Dao) MongoAcceptGroupApply(ctx context.Context, groupid, userid primiti
 	filter["main_type"] = "group"
 	filter["sub"] = userid
 	filter["sub_type"] = "user"
-	_, e = d.mongo.Database("im").Collection("relation").UpdateOne(ctx, filter, bson.M{"$set": bson.M{"main": username}}, opts)
+	_, e = d.mongo.Database("im").Collection("relation").UpdateOne(ctx, filter, bson.M{"$set": bson.M{"name": username}}, opts)
 	return
 }
 
 // friend's relation should be deleted first,because the user will retry
-func (d *Dao) MongoDelFriend(ctx context.Context, userid, friendid primitive.ObjectID) error {
+func (d *Dao) MongoDelFriend(ctx context.Context, userid, friendid string) error {
 	filter := bson.M{"main": friendid, "main_type": "user", "sub": userid, "sub_type": "user"}
 	_, e := d.mongo.Database("im").Collection("relation").DeleteOne(ctx, filter)
 	if e != nil {
@@ -173,7 +173,7 @@ func (d *Dao) MongoDelFriend(ctx context.Context, userid, friendid primitive.Obj
 }
 
 // group's relation should be deleted first,because the user will retry
-func (d *Dao) MongoLeaveGroup(ctx context.Context, userid, groupid primitive.ObjectID) error {
+func (d *Dao) MongoLeaveGroup(ctx context.Context, userid, groupid string) error {
 	filter := bson.M{"main": groupid, "main_type": "group", "sub": userid, "sub_type": "user"}
 	_, e := d.mongo.Database("im").Collection("relation").DeleteOne(ctx, filter)
 	if e != nil {
@@ -188,7 +188,7 @@ func (d *Dao) MongoLeaveGroup(ctx context.Context, userid, groupid primitive.Obj
 }
 
 // user's relation should be deleted first,because the group will retry
-func (d *Dao) MongoKickGroup(ctx context.Context, groupid, userid primitive.ObjectID) error {
+func (d *Dao) MongoKickGroup(ctx context.Context, groupid, userid string) error {
 	filter := bson.M{"main": userid, "main_type": "user", "sub": groupid, "sub_type": "group"}
 	_, e := d.mongo.Database("im").Collection("relation").DeleteOne(ctx, filter)
 	if e != nil {
@@ -202,60 +202,60 @@ func (d *Dao) MongoKickGroup(ctx context.Context, groupid, userid primitive.Obje
 	return e
 }
 
-func (d *Dao) MongoCreateGroup(ctx context.Context, groupname string, owner primitive.ObjectID, starters ...primitive.ObjectID) (primitive.ObjectID, error) {
+func (d *Dao) MongoCreateGroup(ctx context.Context, groupname, owner string, starters ...string) (string, error) {
 	if groupname == "" {
-		return primitive.NilObjectID, ecode.ErrReq
+		return "", ecode.ErrReq
 	}
 	or := bson.A{}
-	if !owner.IsZero() {
-		or = append(or, bson.M{"main": owner, "main_type": "user", "sub": primitive.NilObjectID, "sub_type": "user"})
+	if owner != "" {
+		or = append(or, bson.M{"main": owner, "main_type": "user", "sub": "", "sub_type": "user"})
 	}
 	for _, starter := range starters {
-		if starter.IsZero() {
+		if starter == "" {
 			continue
 		}
-		or = append(or, bson.M{"main": starter, "main_type": "user", "sub": primitive.NilObjectID, "sub_type": "user"})
+		or = append(or, bson.M{"main": starter, "main_type": "user", "sub": "", "sub_type": "user"})
 	}
 	if len(or) == 0 {
-		return primitive.NilObjectID, ecode.ErrReq
+		return "", ecode.ErrReq
 	}
 	cursor, e := d.mongo.Database("im").Collection("relation").Find(ctx, bson.M{"$or": or})
 	if e != nil {
-		return primitive.NilObjectID, e
+		return "", e
 	}
 	all := make([]*model.Relation, 0, len(or))
 	if e = cursor.All(ctx, &all); e != nil {
-		return primitive.NilObjectID, e
+		return "", e
 	}
 
 	docs := bson.A{&model.Relation{
-		Main:     primitive.NilObjectID,
+		Main:     "",
 		MainType: "group",
-		Sub:      primitive.NilObjectID,
+		Sub:      "",
 		SubType:  "user",
 		Name:     groupname,
 		Duty:     1,
 	}}
-	if !owner.IsZero() {
+	if owner != "" {
 		var username string
 		for _, v := range all {
-			if v.Main.Hex() == owner.Hex() {
+			if v.Main == owner {
 				username = v.Name
 				break
 			}
 		}
 		if username == "" {
-			return primitive.NilObjectID, ecode.ErrUserNotExist
+			return "", ecode.ErrUserNotExist
 		}
 		docs = append(docs, &model.Relation{
 			Main:     owner,
 			MainType: "user",
-			Sub:      primitive.NilObjectID,
+			Sub:      "",
 			SubType:  "group",
 			Name:     groupname,
 		})
 		docs = append(docs, &model.Relation{
-			Main:     primitive.NilObjectID,
+			Main:     "",
 			MainType: "group",
 			Sub:      owner,
 			SubType:  "user",
@@ -264,28 +264,28 @@ func (d *Dao) MongoCreateGroup(ctx context.Context, groupname string, owner prim
 		})
 	}
 	for _, starter := range starters {
-		if starter.IsZero() {
+		if starter == "" {
 			continue
 		}
 		var username string
 		for _, v := range all {
-			if v.Main.Hex() == starter.Hex() {
+			if v.Main == starter {
 				username = v.Name
 				break
 			}
 		}
 		if username == "" {
-			return primitive.NilObjectID, ecode.ErrUserNotExist
+			return "", ecode.ErrUserNotExist
 		}
 		docs = append(docs, &model.Relation{
 			Main:     starter,
 			MainType: "user",
-			Sub:      primitive.NilObjectID,
+			Sub:      "",
 			SubType:  "group",
 			Name:     groupname,
 		})
 		docs = append(docs, &model.Relation{
-			Main:     primitive.NilObjectID,
+			Main:     "",
 			MainType: "group",
 			Sub:      starter,
 			SubType:  "user",
@@ -293,10 +293,10 @@ func (d *Dao) MongoCreateGroup(ctx context.Context, groupname string, owner prim
 		})
 	}
 	for {
-		var groupid primitive.ObjectID
+		var groupid string
 		for {
-			groupid = primitive.NewObjectID()
-			filter := bson.M{"main": groupid, "main_type": "group", "sub": primitive.NilObjectID}
+			groupid = primitive.NewObjectID().Hex()
+			filter := bson.M{"main": groupid, "main_type": "group", "sub": "", "sub_type": "user"}
 			if count, e := d.mongo.Database("im").Collection("relation").CountDocuments(ctx, filter); e != nil {
 				return groupid, e
 			} else if count != 0 {
@@ -306,10 +306,10 @@ func (d *Dao) MongoCreateGroup(ctx context.Context, groupname string, owner prim
 		}
 		for _, v := range docs {
 			doc := v.(*model.Relation)
-			if doc.MainType == "group" && doc.Main.IsZero() {
+			if doc.MainType == "group" && doc.Main == "" {
 				doc.Main = groupid
 			}
-			if doc.SubType == "group" && doc.Sub.IsZero() {
+			if doc.SubType == "group" && doc.Sub == "" {
 				doc.Sub = groupid
 			}
 		}
@@ -323,10 +323,7 @@ func (d *Dao) MongoCreateGroup(ctx context.Context, groupname string, owner prim
 	}
 }
 
-func (d *Dao) MongoGetUserRelations(ctx context.Context, userid primitive.ObjectID) ([]*model.RelationTarget, error) {
-	if userid.IsZero() {
-		return nil, ecode.ErrReq
-	}
+func (d *Dao) MongoGetUserRelations(ctx context.Context, userid string) ([]*model.RelationTarget, error) {
 	filter := bson.M{
 		"main":      userid,
 		"main_type": "user",
@@ -350,36 +347,19 @@ func (d *Dao) MongoGetUserRelations(ctx context.Context, userid primitive.Object
 	return all, nil
 }
 
-func (d *Dao) MongoGetUserName(ctx context.Context, userid primitive.ObjectID) (string, error) {
-	if userid.IsZero() {
-		return "", ecode.ErrReq
-	}
-	filter := bson.M{"main": userid, "main_type": "user", "sub": primitive.NilObjectID}
-	opts := options.FindOne().SetProjection(bson.M{"name": 1})
-	user := &model.Relation{}
-	e := d.mongo.Database("im").Collection("relation").FindOne(ctx, filter, opts).Decode(user)
-	if e != nil && e == mongo.ErrNoDocuments {
-		e = ecode.ErrUserNotExist
-	}
-	return user.Name, e
-}
-
 // user update self's name
-func (d *Dao) MongoSetUserName(ctx context.Context, userid primitive.ObjectID, name string) error {
-	if userid.IsZero() || name == "" {
+func (d *Dao) MongoSetUserName(ctx context.Context, userid, name string) error {
+	if userid == "" || name == "" {
 		return ecode.ErrReq
 	}
-	filter := bson.M{"main": userid, "main_type": "user", "sub": primitive.NilObjectID, "sub_type": "user"}
+	filter := bson.M{"main": userid, "main_type": "user", "sub": "", "sub_type": "user"}
 	updater := bson.M{"$set": bson.M{"name": name}}
 	opts := options.Update().SetUpsert(true)
 	_, e := d.mongo.Database("im").Collection("relation").UpdateOne(ctx, filter, updater, opts)
 	return e
 }
 
-func (d *Dao) MongoGetGroupMembers(ctx context.Context, groupid primitive.ObjectID) ([]*model.RelationTarget, error) {
-	if groupid.IsZero() {
-		return nil, ecode.ErrReq
-	}
+func (d *Dao) MongoGetGroupMembers(ctx context.Context, groupid string) ([]*model.RelationTarget, error) {
 	filter := bson.M{
 		"main":      groupid,
 		"main_type": "group",
@@ -404,27 +384,14 @@ func (d *Dao) MongoGetGroupMembers(ctx context.Context, groupid primitive.Object
 	return all, nil
 }
 
-func (d *Dao) MongoGetGroupName(ctx context.Context, groupid primitive.ObjectID) (string, error) {
-	if groupid.IsZero() {
-		return "", ecode.ErrReq
-	}
-	filter := bson.M{"main": groupid, "main_type": "group", "sub": primitive.NilObjectID}
-	opts := options.FindOne().SetProjection(bson.M{"name": 1})
-	group := &model.Relation{}
-	e := d.mongo.Database("im").Collection("relation").FindOne(ctx, filter, opts).Decode(group)
-	if e != nil && e == mongo.ErrNoDocuments {
-		e = ecode.ErrGroupNotExist
-	}
-	return group.Name, e
-}
-
 // group owner update the group's name
-func (d *Dao) MongoSetGroupName(ctx context.Context, groupid primitive.ObjectID, name string) error {
-	if groupid.IsZero() || name == "" {
+func (d *Dao) MongoSetGroupName(ctx context.Context, groupid, name string) error {
+	if groupid == "" || name == "" {
 		return ecode.ErrReq
 	}
-	filter := bson.M{"main": groupid, "main_type": "group", "sub": primitive.NilObjectID, "sub_type": "user"}
-	r, e := d.mongo.Database("im").Collection("relation").UpdateOne(ctx, filter, bson.M{"$set": bson.M{"name": name}})
+	filter := bson.M{"main": groupid, "main_type": "group", "sub": "", "sub_type": "user"}
+	updater := bson.M{"$set": bson.M{"name": name}}
+	r, e := d.mongo.Database("im").Collection("relation").UpdateOne(ctx, filter, updater)
 	if e != nil {
 		return e
 	}
@@ -435,7 +402,7 @@ func (d *Dao) MongoSetGroupName(ctx context.Context, groupid primitive.ObjectID,
 }
 
 // user update the target's name in user's view
-func (d *Dao) MongoUpdateUserRelationName(ctx context.Context, userid, target primitive.ObjectID, targetType, newname string) (*model.RelationTarget, error) {
+func (d *Dao) MongoUpdateUserRelationName(ctx context.Context, userid, target, targetType, newname string) (*model.RelationTarget, error) {
 	filter := bson.M{"main": userid, "main_type": "user", "sub": target, "sub_type": targetType}
 	updater := bson.M{"$set": bson.M{"name": newname}}
 	if e := d.mongo.Database("im").Collection("relation").FindOneAndUpdate(ctx, filter, updater).Err(); e != nil {
@@ -452,7 +419,7 @@ func (d *Dao) MongoUpdateUserRelationName(ctx context.Context, userid, target pr
 }
 
 // user update self's name in group
-func (d *Dao) MongoUpdateNameInGroup(ctx context.Context, userid, groupid primitive.ObjectID, newname string) (*model.RelationTarget, error) {
+func (d *Dao) MongoUpdateNameInGroup(ctx context.Context, userid, groupid, newname string) (*model.RelationTarget, error) {
 	filter := bson.M{"main": groupid, "main_type": "group", "sub": userid, "sub_type": "user"}
 	updater := bson.M{"$set": bson.M{"name": newname}}
 	r := &model.RelationTarget{}
@@ -467,7 +434,7 @@ func (d *Dao) MongoUpdateNameInGroup(ctx context.Context, userid, groupid primit
 }
 
 // group admin update another user's duty in group
-func (d *Dao) MongoUpdateDutyInGroup(ctx context.Context, userid, groupid primitive.ObjectID, newduty uint8) (*model.RelationTarget, error) {
+func (d *Dao) MongoUpdateDutyInGroup(ctx context.Context, userid, groupid string, newduty uint8) (*model.RelationTarget, error) {
 	filter := bson.M{"main": groupid, "main_type": "group", "sub": userid, "sub_type": "user"}
 	updater := bson.M{"$set": bson.M{"duty": newduty}}
 	r := &model.RelationTarget{}
