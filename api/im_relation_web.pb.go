@@ -37,6 +37,10 @@ var _WebPathRelationGroupMembers = "/im.relation/group_members"
 var _WebPathRelationUpdateUserRelationName = "/im.relation/update_user_relation_name"
 var _WebPathRelationUpdateNameInGroup = "/im.relation/update_name_in_group"
 var _WebPathRelationUpdateDutyInGroup = "/im.relation/update_duty_in_group"
+var _WebPathRelationGetSelfRequestsCount = "/im.relation/get_self_requests_count"
+var _WebPathRelationGetSelfRequests = "/im.relation/get_self_requests"
+var _WebPathRelationGetGroupRequestsCount = "/im.relation/get_group_requests_count"
+var _WebPathRelationGetGroupRequests = "/im.relation/get_group_requests"
 
 type RelationWebClient interface {
 	// user a -> request -> user b(wait user b to do action:accept or refuse)
@@ -59,6 +63,10 @@ type RelationWebClient interface {
 	UpdateUserRelationName(context.Context, *UpdateUserRelationNameReq, http.Header) (*UpdateUserRelationNameResp, error)
 	UpdateNameInGroup(context.Context, *UpdateNameInGroupReq, http.Header) (*UpdateNameInGroupResp, error)
 	UpdateDutyInGroup(context.Context, *UpdateDutyInGroupReq, http.Header) (*UpdateDutyInGroupResp, error)
+	GetSelfRequestsCount(context.Context, *GetSelfRequestsCountReq, http.Header) (*GetSelfRequestsCountResp, error)
+	GetSelfRequests(context.Context, *GetSelfRequestsReq, http.Header) (*GetSelfRequestsResp, error)
+	GetGroupRequestsCount(context.Context, *GetGroupRequestsCountReq, http.Header) (*GetGroupRequestsCountResp, error)
+	GetGroupRequests(context.Context, *GetGroupRequestsReq, http.Header) (*GetGroupRequestsResp, error)
 }
 
 type relationWebClient struct {
@@ -613,6 +621,134 @@ func (c *relationWebClient) UpdateDutyInGroup(ctx context.Context, req *UpdateDu
 	}
 	return resp, nil
 }
+func (c *relationWebClient) GetSelfRequestsCount(ctx context.Context, req *GetSelfRequestsCountReq, header http.Header) (*GetSelfRequestsCountResp, error) {
+	if req == nil {
+		return nil, cerror.ErrReq
+	}
+	if header == nil {
+		header = make(http.Header)
+	}
+	header.Set("Content-Type", "application/x-protobuf")
+	header.Set("Accept", "application/x-protobuf")
+	reqd, _ := proto.Marshal(req)
+	r, e := c.cc.Post(ctx, _WebPathRelationGetSelfRequestsCount, "", header, metadata.GetMetadata(ctx), reqd)
+	if e != nil {
+		return nil, e
+	}
+	data, e := io.ReadAll(r.Body)
+	r.Body.Close()
+	if e != nil {
+		return nil, cerror.ConvertStdError(e)
+	}
+	resp := new(GetSelfRequestsCountResp)
+	if len(data) == 0 {
+		return resp, nil
+	}
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-protobuf") {
+		if e := proto.Unmarshal(data, resp); e != nil {
+			return nil, cerror.ErrResp
+		}
+	} else if e := (protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}).Unmarshal(data, resp); e != nil {
+		return nil, cerror.ErrResp
+	}
+	return resp, nil
+}
+func (c *relationWebClient) GetSelfRequests(ctx context.Context, req *GetSelfRequestsReq, header http.Header) (*GetSelfRequestsResp, error) {
+	if req == nil {
+		return nil, cerror.ErrReq
+	}
+	if header == nil {
+		header = make(http.Header)
+	}
+	header.Set("Content-Type", "application/x-protobuf")
+	header.Set("Accept", "application/x-protobuf")
+	reqd, _ := proto.Marshal(req)
+	r, e := c.cc.Post(ctx, _WebPathRelationGetSelfRequests, "", header, metadata.GetMetadata(ctx), reqd)
+	if e != nil {
+		return nil, e
+	}
+	data, e := io.ReadAll(r.Body)
+	r.Body.Close()
+	if e != nil {
+		return nil, cerror.ConvertStdError(e)
+	}
+	resp := new(GetSelfRequestsResp)
+	if len(data) == 0 {
+		return resp, nil
+	}
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-protobuf") {
+		if e := proto.Unmarshal(data, resp); e != nil {
+			return nil, cerror.ErrResp
+		}
+	} else if e := (protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}).Unmarshal(data, resp); e != nil {
+		return nil, cerror.ErrResp
+	}
+	return resp, nil
+}
+func (c *relationWebClient) GetGroupRequestsCount(ctx context.Context, req *GetGroupRequestsCountReq, header http.Header) (*GetGroupRequestsCountResp, error) {
+	if req == nil {
+		return nil, cerror.ErrReq
+	}
+	if header == nil {
+		header = make(http.Header)
+	}
+	header.Set("Content-Type", "application/x-protobuf")
+	header.Set("Accept", "application/x-protobuf")
+	reqd, _ := proto.Marshal(req)
+	r, e := c.cc.Post(ctx, _WebPathRelationGetGroupRequestsCount, "", header, metadata.GetMetadata(ctx), reqd)
+	if e != nil {
+		return nil, e
+	}
+	data, e := io.ReadAll(r.Body)
+	r.Body.Close()
+	if e != nil {
+		return nil, cerror.ConvertStdError(e)
+	}
+	resp := new(GetGroupRequestsCountResp)
+	if len(data) == 0 {
+		return resp, nil
+	}
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-protobuf") {
+		if e := proto.Unmarshal(data, resp); e != nil {
+			return nil, cerror.ErrResp
+		}
+	} else if e := (protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}).Unmarshal(data, resp); e != nil {
+		return nil, cerror.ErrResp
+	}
+	return resp, nil
+}
+func (c *relationWebClient) GetGroupRequests(ctx context.Context, req *GetGroupRequestsReq, header http.Header) (*GetGroupRequestsResp, error) {
+	if req == nil {
+		return nil, cerror.ErrReq
+	}
+	if header == nil {
+		header = make(http.Header)
+	}
+	header.Set("Content-Type", "application/x-protobuf")
+	header.Set("Accept", "application/x-protobuf")
+	reqd, _ := proto.Marshal(req)
+	r, e := c.cc.Post(ctx, _WebPathRelationGetGroupRequests, "", header, metadata.GetMetadata(ctx), reqd)
+	if e != nil {
+		return nil, e
+	}
+	data, e := io.ReadAll(r.Body)
+	r.Body.Close()
+	if e != nil {
+		return nil, cerror.ConvertStdError(e)
+	}
+	resp := new(GetGroupRequestsResp)
+	if len(data) == 0 {
+		return resp, nil
+	}
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-protobuf") {
+		if e := proto.Unmarshal(data, resp); e != nil {
+			return nil, cerror.ErrResp
+		}
+	} else if e := (protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}).Unmarshal(data, resp); e != nil {
+		return nil, cerror.ErrResp
+	}
+	return resp, nil
+}
 
 type RelationWebServer interface {
 	// user a -> request -> user b(wait user b to do action:accept or refuse)
@@ -635,6 +771,10 @@ type RelationWebServer interface {
 	UpdateUserRelationName(context.Context, *UpdateUserRelationNameReq) (*UpdateUserRelationNameResp, error)
 	UpdateNameInGroup(context.Context, *UpdateNameInGroupReq) (*UpdateNameInGroupResp, error)
 	UpdateDutyInGroup(context.Context, *UpdateDutyInGroupReq) (*UpdateDutyInGroupResp, error)
+	GetSelfRequestsCount(context.Context, *GetSelfRequestsCountReq) (*GetSelfRequestsCountResp, error)
+	GetSelfRequests(context.Context, *GetSelfRequestsReq) (*GetSelfRequestsResp, error)
+	GetGroupRequestsCount(context.Context, *GetGroupRequestsCountReq) (*GetGroupRequestsCountResp, error)
+	GetGroupRequests(context.Context, *GetGroupRequestsReq) (*GetGroupRequestsResp, error)
 }
 
 func _Relation_MakeFriend_WebHandler(handler func(context.Context, *MakeFriendReq) (*MakeFriendResp, error)) web.OutsideHandler {
@@ -1788,6 +1928,246 @@ func _Relation_UpdateDutyInGroup_WebHandler(handler func(context.Context, *Updat
 		}
 	}
 }
+func _Relation_GetSelfRequestsCount_WebHandler(handler func(context.Context, *GetSelfRequestsCountReq) (*GetSelfRequestsCountResp, error)) web.OutsideHandler {
+	return func(ctx *web.Context) {
+		req := new(GetSelfRequestsCountReq)
+		resp, e := handler(ctx, req)
+		ee := cerror.ConvertStdError(e)
+		if ee != nil {
+			ctx.Abort(ee)
+			return
+		}
+		if resp == nil {
+			resp = new(GetSelfRequestsCountResp)
+		}
+		if strings.HasPrefix(ctx.GetAcceptType(), "application/x-protobuf") {
+			respd, _ := proto.Marshal(resp)
+			ctx.Write("application/x-protobuf", respd)
+		} else {
+			respd, _ := protojson.MarshalOptions{AllowPartial: true, UseProtoNames: true, UseEnumNumbers: true, EmitUnpopulated: true}.Marshal(resp)
+			ctx.Write("application/json", respd)
+		}
+	}
+}
+func _Relation_GetSelfRequests_WebHandler(handler func(context.Context, *GetSelfRequestsReq) (*GetSelfRequestsResp, error)) web.OutsideHandler {
+	return func(ctx *web.Context) {
+		req := new(GetSelfRequestsReq)
+		if strings.HasPrefix(ctx.GetContentType(), "application/json") {
+			data, e := ctx.GetBody()
+			if e != nil {
+				log.Error(ctx, "[/im.relation/get_self_requests] get body failed", log.CError(e))
+				ctx.Abort(e)
+				return
+			}
+			if len(data) > 0 {
+				if e := (protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}).Unmarshal(data, req); e != nil {
+					log.Error(ctx, "[/im.relation/get_self_requests] unmarshal json body failed", log.CError(e))
+					ctx.Abort(cerror.ErrReq)
+					return
+				}
+			}
+		} else if strings.HasPrefix(ctx.GetContentType(), "application/x-protobuf") {
+			data, e := ctx.GetBody()
+			if e != nil {
+				log.Error(ctx, "[/im.relation/get_self_requests] get body failed", log.CError(e))
+				ctx.Abort(e)
+				return
+			}
+			if len(data) > 0 {
+				if e := proto.Unmarshal(data, req); e != nil {
+					log.Error(ctx, "[/im.relation/get_self_requests] unmarshal proto body failed", log.CError(e))
+					ctx.Abort(cerror.ErrReq)
+					return
+				}
+			}
+		} else {
+			if e := ctx.ParseForm(); e != nil {
+				log.Error(ctx, "[/im.relation/get_self_requests] parse form failed", log.CError(e))
+				ctx.Abort(cerror.ErrReq)
+				return
+			}
+			// req.Cursor
+			if form := ctx.GetForm("cursor"); len(form) != 0 {
+				if num, e := strconv.ParseUint(form, 10, 64); e != nil {
+					log.Error(ctx, "[/im.relation/get_self_requests] data format wrong", log.String("field", "cursor"))
+					ctx.Abort(cerror.ErrReq)
+					return
+				} else {
+					req.Cursor = num
+				}
+			}
+			// req.Direction
+			if form := ctx.GetForm("direction"); len(form) != 0 {
+				req.Direction = form
+			}
+		}
+		if errstr := req.Validate(); errstr != "" {
+			log.Error(ctx, "[/im.relation/get_self_requests] validate failed", log.String("validate", errstr))
+			ctx.Abort(cerror.ErrReq)
+			return
+		}
+		resp, e := handler(ctx, req)
+		ee := cerror.ConvertStdError(e)
+		if ee != nil {
+			ctx.Abort(ee)
+			return
+		}
+		if resp == nil {
+			resp = new(GetSelfRequestsResp)
+		}
+		if strings.HasPrefix(ctx.GetAcceptType(), "application/x-protobuf") {
+			respd, _ := proto.Marshal(resp)
+			ctx.Write("application/x-protobuf", respd)
+		} else {
+			respd, _ := protojson.MarshalOptions{AllowPartial: true, UseProtoNames: true, UseEnumNumbers: true, EmitUnpopulated: true}.Marshal(resp)
+			ctx.Write("application/json", respd)
+		}
+	}
+}
+func _Relation_GetGroupRequestsCount_WebHandler(handler func(context.Context, *GetGroupRequestsCountReq) (*GetGroupRequestsCountResp, error)) web.OutsideHandler {
+	return func(ctx *web.Context) {
+		req := new(GetGroupRequestsCountReq)
+		if strings.HasPrefix(ctx.GetContentType(), "application/json") {
+			data, e := ctx.GetBody()
+			if e != nil {
+				log.Error(ctx, "[/im.relation/get_group_requests_count] get body failed", log.CError(e))
+				ctx.Abort(e)
+				return
+			}
+			if len(data) > 0 {
+				if e := (protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}).Unmarshal(data, req); e != nil {
+					log.Error(ctx, "[/im.relation/get_group_requests_count] unmarshal json body failed", log.CError(e))
+					ctx.Abort(cerror.ErrReq)
+					return
+				}
+			}
+		} else if strings.HasPrefix(ctx.GetContentType(), "application/x-protobuf") {
+			data, e := ctx.GetBody()
+			if e != nil {
+				log.Error(ctx, "[/im.relation/get_group_requests_count] get body failed", log.CError(e))
+				ctx.Abort(e)
+				return
+			}
+			if len(data) > 0 {
+				if e := proto.Unmarshal(data, req); e != nil {
+					log.Error(ctx, "[/im.relation/get_group_requests_count] unmarshal proto body failed", log.CError(e))
+					ctx.Abort(cerror.ErrReq)
+					return
+				}
+			}
+		} else {
+			if e := ctx.ParseForm(); e != nil {
+				log.Error(ctx, "[/im.relation/get_group_requests_count] parse form failed", log.CError(e))
+				ctx.Abort(cerror.ErrReq)
+				return
+			}
+			// req.GroupId
+			if form := ctx.GetForm("group_id"); len(form) != 0 {
+				req.GroupId = form
+			}
+		}
+		if errstr := req.Validate(); errstr != "" {
+			log.Error(ctx, "[/im.relation/get_group_requests_count] validate failed", log.String("validate", errstr))
+			ctx.Abort(cerror.ErrReq)
+			return
+		}
+		resp, e := handler(ctx, req)
+		ee := cerror.ConvertStdError(e)
+		if ee != nil {
+			ctx.Abort(ee)
+			return
+		}
+		if resp == nil {
+			resp = new(GetGroupRequestsCountResp)
+		}
+		if strings.HasPrefix(ctx.GetAcceptType(), "application/x-protobuf") {
+			respd, _ := proto.Marshal(resp)
+			ctx.Write("application/x-protobuf", respd)
+		} else {
+			respd, _ := protojson.MarshalOptions{AllowPartial: true, UseProtoNames: true, UseEnumNumbers: true, EmitUnpopulated: true}.Marshal(resp)
+			ctx.Write("application/json", respd)
+		}
+	}
+}
+func _Relation_GetGroupRequests_WebHandler(handler func(context.Context, *GetGroupRequestsReq) (*GetGroupRequestsResp, error)) web.OutsideHandler {
+	return func(ctx *web.Context) {
+		req := new(GetGroupRequestsReq)
+		if strings.HasPrefix(ctx.GetContentType(), "application/json") {
+			data, e := ctx.GetBody()
+			if e != nil {
+				log.Error(ctx, "[/im.relation/get_group_requests] get body failed", log.CError(e))
+				ctx.Abort(e)
+				return
+			}
+			if len(data) > 0 {
+				if e := (protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}).Unmarshal(data, req); e != nil {
+					log.Error(ctx, "[/im.relation/get_group_requests] unmarshal json body failed", log.CError(e))
+					ctx.Abort(cerror.ErrReq)
+					return
+				}
+			}
+		} else if strings.HasPrefix(ctx.GetContentType(), "application/x-protobuf") {
+			data, e := ctx.GetBody()
+			if e != nil {
+				log.Error(ctx, "[/im.relation/get_group_requests] get body failed", log.CError(e))
+				ctx.Abort(e)
+				return
+			}
+			if len(data) > 0 {
+				if e := proto.Unmarshal(data, req); e != nil {
+					log.Error(ctx, "[/im.relation/get_group_requests] unmarshal proto body failed", log.CError(e))
+					ctx.Abort(cerror.ErrReq)
+					return
+				}
+			}
+		} else {
+			if e := ctx.ParseForm(); e != nil {
+				log.Error(ctx, "[/im.relation/get_group_requests] parse form failed", log.CError(e))
+				ctx.Abort(cerror.ErrReq)
+				return
+			}
+			// req.GroupId
+			if form := ctx.GetForm("group_id"); len(form) != 0 {
+				req.GroupId = form
+			}
+			// req.Cursor
+			if form := ctx.GetForm("cursor"); len(form) != 0 {
+				if num, e := strconv.ParseUint(form, 10, 64); e != nil {
+					log.Error(ctx, "[/im.relation/get_group_requests] data format wrong", log.String("field", "cursor"))
+					ctx.Abort(cerror.ErrReq)
+					return
+				} else {
+					req.Cursor = num
+				}
+			}
+			// req.Direction
+			if form := ctx.GetForm("direction"); len(form) != 0 {
+				req.Direction = form
+			}
+		}
+		if errstr := req.Validate(); errstr != "" {
+			log.Error(ctx, "[/im.relation/get_group_requests] validate failed", log.String("validate", errstr))
+			ctx.Abort(cerror.ErrReq)
+			return
+		}
+		resp, e := handler(ctx, req)
+		ee := cerror.ConvertStdError(e)
+		if ee != nil {
+			ctx.Abort(ee)
+			return
+		}
+		if resp == nil {
+			resp = new(GetGroupRequestsResp)
+		}
+		if strings.HasPrefix(ctx.GetAcceptType(), "application/x-protobuf") {
+			respd, _ := proto.Marshal(resp)
+			ctx.Write("application/x-protobuf", respd)
+		} else {
+			respd, _ := protojson.MarshalOptions{AllowPartial: true, UseProtoNames: true, UseEnumNumbers: true, EmitUnpopulated: true}.Marshal(resp)
+			ctx.Write("application/json", respd)
+		}
+	}
+}
 func RegisterRelationWebServer(router *web.Router, svc RelationWebServer, allmids map[string]web.OutsideHandler) {
 	// avoid lint
 	_ = allmids
@@ -2011,5 +2391,57 @@ func RegisterRelationWebServer(router *web.Router, svc RelationWebServer, allmid
 		}
 		mids = append(mids, _Relation_UpdateDutyInGroup_WebHandler(svc.UpdateDutyInGroup))
 		router.Post(_WebPathRelationUpdateDutyInGroup, mids...)
+	}
+	{
+		requiredMids := []string{"token"}
+		mids := make([]web.OutsideHandler, 0, 2)
+		for _, v := range requiredMids {
+			if mid, ok := allmids[v]; ok {
+				mids = append(mids, mid)
+			} else {
+				panic("missing midware:" + v)
+			}
+		}
+		mids = append(mids, _Relation_GetSelfRequestsCount_WebHandler(svc.GetSelfRequestsCount))
+		router.Post(_WebPathRelationGetSelfRequestsCount, mids...)
+	}
+	{
+		requiredMids := []string{"token"}
+		mids := make([]web.OutsideHandler, 0, 2)
+		for _, v := range requiredMids {
+			if mid, ok := allmids[v]; ok {
+				mids = append(mids, mid)
+			} else {
+				panic("missing midware:" + v)
+			}
+		}
+		mids = append(mids, _Relation_GetSelfRequests_WebHandler(svc.GetSelfRequests))
+		router.Post(_WebPathRelationGetSelfRequests, mids...)
+	}
+	{
+		requiredMids := []string{"token"}
+		mids := make([]web.OutsideHandler, 0, 2)
+		for _, v := range requiredMids {
+			if mid, ok := allmids[v]; ok {
+				mids = append(mids, mid)
+			} else {
+				panic("missing midware:" + v)
+			}
+		}
+		mids = append(mids, _Relation_GetGroupRequestsCount_WebHandler(svc.GetGroupRequestsCount))
+		router.Post(_WebPathRelationGetGroupRequestsCount, mids...)
+	}
+	{
+		requiredMids := []string{"token"}
+		mids := make([]web.OutsideHandler, 0, 2)
+		for _, v := range requiredMids {
+			if mid, ok := allmids[v]; ok {
+				mids = append(mids, mid)
+			} else {
+				panic("missing midware:" + v)
+			}
+		}
+		mids = append(mids, _Relation_GetGroupRequests_WebHandler(svc.GetGroupRequests))
+		router.Post(_WebPathRelationGetGroupRequests, mids...)
 	}
 }

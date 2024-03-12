@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/chenjie199234/im/api"
 	"github.com/chenjie199234/im/ecode"
 	"github.com/chenjie199234/im/model"
 
@@ -19,39 +20,106 @@ const defaultRequest = 32
 const maxRequest = 128
 
 var addRequestScript *gredis.Script
-var getRequestScript *gredis.Script
 var refreshRequestScript *gredis.Script
+var countRequestScript *gredis.Script
+var getRequestScript *gredis.Script
+var delRequestScript *gredis.Script
 
 var setRelationScript *gredis.Script
 var addRelationScript *gredis.Script
 
 func init() {
 	addRequestScript = gredis.NewScript(`local time=redis.call("TIME")
-redis.call("ZREMRANGEBYSCORE",KEYS[1],0,time[1]-ARGV[2])
+local dels=redis.call("ZRANGE",KEYS[1],0,time[1]*1000000+time[2]-ARGV[3]*1000000,"BYSCORE")
+if(dels and #dels>0) then
+	redis.call("ZREMRANGEBYSCORE",KEYS[1],0,time[1]*1000000+time[2]-ARGV[3]*1000000)
+	redis.call("HDEL",KEYS[2],unpack(dels))
+end
 redis.call("ZREM",KEYS[1],ARGV[1])
-if(redis.call("ZCARD",KEYS[1])>=ARGV[3])
-then
+if(redis.call("ZCARD",KEYS[1])>=tonumber(ARGV[4])) then
 	return -1
 end
-local num=redis.call("ZADD",KEYS[1],time[1],ARGV[1])
-redis.call("EXPIRE",KEYS[1],ARGV[2])
+local num=redis.call("ZADD",KEYS[1],time[1]*1000000+time[2],ARGV[1])
+redis.call("HSET",KEYS[2],ARGV[1],ARGV[2])
+redis.call("EXPIRE",KEYS[1],ARGV[3])
+redis.call("EXPIRE",KEYS[2],ARGV[3])
 return num`)
-	getRequestScript = gredis.NewScript(`local time=redis.call("TIME")
-redis.call("ZREMRANGEBYSCORE",KEYS[1],0,time[1]-ARGV[1])
-redis.call("EXPIRE",KEYS[1],ARGV[1])
-return redis.call("ZRANGE",0,-1)`)
 	refreshRequestScript = gredis.NewScript(`local time=redis.call("TIME")
-redis.call("ZREMRANGEBYSCORE",KEYS[1],0,time[1]-ARGV[2])
-if(redis.call("ZSCORE",KEYS[1],ARGV[1])==nil)
-then
+if(redis.call("EXPIRE",KEYS[1],ARGV[2])==0) then
 	return nil
 end
-local num=redis.call("ZADD",KEYS[1],time[1],ARGV[1])
-redis.call("EXPIRE",KEYS[1],ARGV[2])
+redis.call("EXPIRE",KEYS[2],ARGV[2])
+local dels=redis.call("ZRANGE",KEYS[1],0,time[1]*1000000+time[2]-ARGV[2]*1000000,"BYSCORE")
+if(dels and #dels>0) then
+	redis.call("ZREMRANGEBYSCORE",KEYS[1],0,time[1]*1000000+time[2]-ARGV[2]*1000000)
+	redis.call("HDEL",KEYS[2],unpack(dels))
+end
+if(not redis.call("ZSCORE",KEYS[1],ARGV[1])) then
+	return nil
+end
+local num=redis.call("ZADD",KEYS[1],time[1]*1000000+time[2],ARGV[1])
+return num`)
+	countRequestScript = gredis.NewScript(`local time=redis.call("TIME")
+if(redis.call("EXPIRE",KEYS[1],ARGV[1])==0) then
+	return 0
+end
+redis.call("EXPIRE",KEYS[2],ARGV[1])
+local dels=redis.call("ZRANGE",KEYS[1],0,time[1]*1000000+time[2]-ARGV[1]*1000000,"BYSCORE")
+if(dels and #dels>0) then
+	redis.call("ZREMRANGEBYSCORE",KEYS[1],0,time[1]*1000000+time[2]-ARGV[1]*1000000)
+	redis.call("HDEL",KEYS[2],unpack(dels))
+end
+return redis.call("ZCARD",KEYS[1])`)
+	getRequestScript = gredis.NewScript(`local time=redis.call("TIME")
+if(redis.call("EXPIRE",KEYS[1],ARGV[1])==0) then
+	return {}
+end
+redis.call("EXPIRE",KEYS[2],ARGV[1])
+local dels=redis.call("ZRANGE",KEYS[1],0,time[1]*1000000+time[2]-ARGV[1]*1000000,"BYSCORE")
+if(dels and #dels>0) then
+	redis.call("ZREMRANGEBYSCORE",KEYS[1],0,time[1]*1000000+time[2]-ARGV[1]*1000000)
+	redis.call("HDEL",KEYS[2],unpack(dels))
+end
+local tmp
+if(ARGV[4]=="REV") then
+	tmp=redis.call("ZRANGE",KEYS[1],ARGV[2],ARGV[3],"BYSCORE","REV","LIMIT",0,ARGV[5],"WITHSCORES")
+else
+	tmp=redis.call("ZRANGE",KEYS[1],ARGV[2],ARGV[3],"BYSCORE","LIMIT",0,ARGV[4],"WITHSCORES")
+end
+if(not tmp or #tmp==0) then
+	return {}
+end
+local fields={}
+local result={}
+for i=1,#tmp,2 do
+	table.insert(fields,tmp[i])
+	table.insert(result,tmp[i])
+	table.insert(result,tmp[i+1])
+	table.insert(result,"")
+end
+tmp=redis.call("HMGET",KEYS[2],unpack(fields))
+for i=1,#tmp,1 do
+	result[i*3]=tmp[i]
+end
+return result`)
+	delRequestScript = gredis.NewScript(`local time=redis.call("TIME")
+if(redis.call("EXPIRE",KEYS[1],ARGV[2])==0) then
+	return 0
+end
+redis.call("EXPIRE",KEYS[2],ARGV[2])
+local dels=redis.call("ZRANGE",KEYS[1],0,time[1]*1000000+time[2]-ARGV[2]*1000000,"BYSCORE")
+if(dels and #dels>0) then
+	redis.call("ZREMRANGEBYSCORE",KEYS[1],0,time[1]*1000000+time[2]-ARGV[2]*1000000)
+	redis.call("HDEL",KEYS[2],unpack(dels))
+end
+local num=redis.call("ZREM",KEYS[1],ARGV[1])
+if(num>0) then
+	redis.call("HDEL",KEYS[2],ARGV[1])
+end
 return num`)
 
 	setRelationScript = gredis.NewScript(`redis.call("DEL",KEYS[1])
-local num=redis.call("HSET",KEYS[1],unpack(ARGV,2)
+local num=redis.call("HSET",KEYS[1],unpack(ARGV,2))
 redis.call("EXPIRE",KEYS[1],ARGV[1])
 return num`)
 	addRelationScript = gredis.NewScript(`if(redis.call("EXISTS",KEYS[1])==0)
@@ -59,7 +127,7 @@ then
 	return nil
 end
 local tmp=redis.call("HGET",KEYS[1],ARGV[2])
-if(tmp==nil or tmp=="")
+if(not tmp or tmp=="")
 then
 	return -1
 end
@@ -68,12 +136,13 @@ redis.call("EXPIRE",KEYS[1],ARGV[1])
 return num`)
 }
 
-//-----------------------request--------------------------------------
+//-----------------------user request--------------------------------------
 
-func (d *Dao) RedisAddMakeFriendRequest(ctx context.Context, requester, accepter string) error {
-	key := "request_user_{" + accepter + "}"
-	value := "user_" + requester
-	num, e := addRequestScript.Run(ctx, d.redis, []string{key}, value, defaultExpire, defaultRequest).Int()
+func (d *Dao) RedisAddMakeFriendRequest(ctx context.Context, requester, requestername, accepter string) error {
+	key1 := "request_user_{" + accepter + "}"
+	key2 := key1 + "_extra"
+	field := "user_" + requester
+	num, e := addRequestScript.Run(ctx, d.redis, []string{key1, key2}, field, requestername, defaultExpire, defaultRequest).Int()
 	if e != nil {
 		return e
 	}
@@ -82,11 +151,11 @@ func (d *Dao) RedisAddMakeFriendRequest(ctx context.Context, requester, accepter
 	}
 	return nil
 }
-
-func (d *Dao) RedisAddGroupInviteRequest(ctx context.Context, groupid, accepter string) error {
-	key := "request_user_{" + accepter + "}"
-	value := "group_" + groupid
-	num, e := addRequestScript.Run(ctx, d.redis, []string{key}, value, defaultExpire, defaultRequest).Int()
+func (d *Dao) RedisAddGroupInviteRequest(ctx context.Context, groupid, groupname, accepter string) error {
+	key1 := "request_user_{" + accepter + "}"
+	key2 := key1 + "_extra"
+	field := "group_" + groupid
+	num, e := addRequestScript.Run(ctx, d.redis, []string{key1, key2}, field, groupname, defaultExpire, defaultRequest).Int()
 	if e != nil {
 		return e
 	}
@@ -95,67 +164,130 @@ func (d *Dao) RedisAddGroupInviteRequest(ctx context.Context, groupid, accepter 
 	}
 	return nil
 }
-
-func (d *Dao) RedisAddGroupApplyRequest(ctx context.Context, requester, groupid string) error {
-	key := "request_group_{" + groupid + "}"
-	num, e := addRequestScript.Run(ctx, d.redis, []string{key}, requester, defaultExpire, maxRequest).Int()
-	if e != nil {
-		return e
+func (d *Dao) RedisGetUserRequests(ctx context.Context, userid string, cursor uint64, direction string, count uint8) ([]*api.RequesterInfo, error) {
+	key1 := "request_user_{" + userid + "}"
+	key2 := key1 + "_extra"
+	args := make([]interface{}, 0, 5)
+	if direction == "after" {
+		args = append(args, defaultExpire, cursor, "+inf", count)
+	} else if direction == "before" {
+		args = append(args, defaultExpire, cursor, "-inf", "REV", count)
+	} else {
+		return nil, ecode.ErrReq
 	}
-	if num == -1 {
-		return ecode.ErrTooPopular
-	}
-	return nil
-}
-
-// return key:userid or groupid,value:user or group
-func (d *Dao) RedisGetUserRequests(ctx context.Context, userid string) (map[string]string, error) {
-	key := "request_user_{" + userid + "}"
-	strs, e := getRequestScript.Run(ctx, d.redis, []string{key}, defaultExpire).StringSlice()
+	rs, e := getRequestScript.Run(ctx, d.redis, []string{key1, key2}, args...).Slice()
 	if e != nil {
 		return nil, e
 	}
-	r := make(map[string]string, len(strs))
-	for _, str := range strs {
-		pieces := strings.Split(str, "_")
+	result := make([]*api.RequesterInfo, 0, len(rs))
+	for i := 0; i < len(rs); i += 3 {
+		pieces := strings.Split(rs[i].(string), "_")
 		if len(pieces) != 2 || (pieces[0] != "user" && pieces[0] != "group") {
 			return nil, ecode.ErrCacheDataBroken
 		}
-		r[pieces[0]] = pieces[1]
+		score, e := strconv.ParseUint(rs[i+1].(string), 10, 64)
+		if e != nil {
+			return nil, ecode.ErrCacheDataBroken
+		}
+		if rs[i+2].(string) == "" {
+			return nil, ecode.ErrCacheDataBroken
+		}
+		result = append(result, &api.RequesterInfo{
+			Requester:     pieces[1],
+			RequesterType: pieces[0],
+			Cursor:        score,
+			Name:          rs[i+2].(string),
+		})
 	}
-	return r, nil
+	return result, nil
+}
+func (d *Dao) RedisCountUserRequests(ctx context.Context, userid string) (uint64, error) {
+	key1 := "request_user_{" + userid + "}"
+	key2 := key1 + "_extra"
+	return countRequestScript.Run(ctx, d.redis, []string{key1, key2}, defaultExpire).Uint64()
 }
 func (d *Dao) RedisRefreshUserRequest(ctx context.Context, userid, target, targetType string) error {
-	key := "request_user_{" + userid + "}"
-	value := targetType + "_" + target
-	e := refreshRequestScript.Run(ctx, d.redis, []string{key}, value, defaultExpire).Err()
+	key1 := "request_user_{" + userid + "}"
+	key2 := key1 + "_extra"
+	field := targetType + "_" + target
+	e := refreshRequestScript.Run(ctx, d.redis, []string{key1, key2}, field, defaultExpire).Err()
 	if e != nil && e == gredis.Nil {
 		e = ecode.ErrRequestNotExist
 	}
 	return e
 }
 func (d *Dao) RedisDelUserRequest(ctx context.Context, userid, target, targetType string) error {
-	key := "request_user_{" + userid + "}"
-	value := targetType + "_" + target
-	return d.redis.ZRem(ctx, key, value).Err()
+	key1 := "request_user_{" + userid + "}"
+	key2 := key1 + "_extra"
+	field := targetType + "_" + target
+	return delRequestScript.Run(ctx, d.redis, []string{key1, key2}, field, defaultExpire).Err()
 }
 
-// return userids
-func (d *Dao) RedisGetGroupRequests(ctx context.Context, groupid string) ([]string, error) {
-	key := "request_group_{" + groupid + "}"
-	return getRequestScript.Run(ctx, d.redis, []string{key}, defaultExpire).StringSlice()
+//-----------------------group request--------------------------------------
+
+func (d *Dao) RedisAddGroupApplyRequest(ctx context.Context, requester, requestername, groupid string) error {
+	key1 := "request_group_{" + groupid + "}"
+	key2 := key1 + "_extra"
+	num, e := addRequestScript.Run(ctx, d.redis, []string{key1, key2}, requester, requestername, defaultExpire, maxRequest).Int()
+	if e != nil {
+		return e
+	}
+	if num == -1 {
+		return ecode.ErrTooPopular
+	}
+	return nil
+}
+func (d *Dao) RedisGetGroupRequests(ctx context.Context, groupid string, cursor uint64, direction string, count uint8) ([]*api.RequesterInfo, error) {
+	key1 := "request_group_{" + groupid + "}"
+	key2 := key1 + "_extra"
+	args := make([]interface{}, 0, 5)
+	if direction == "after" {
+		args = append(args, defaultExpire, cursor, "+inf", count)
+	} else if direction == "before" {
+		args = append(args, defaultExpire, cursor, "-inf", "REV", count)
+	} else {
+		return nil, ecode.ErrReq
+	}
+	rs, e := getRequestScript.Run(ctx, d.redis, []string{key1, key2}, args...).Slice()
+	if e != nil {
+		return nil, e
+	}
+	result := make([]*api.RequesterInfo, 0, len(rs))
+	for i := 0; i < len(rs); i += 3 {
+		score, e := strconv.ParseUint(rs[i+1].(string), 10, 64)
+		if e != nil {
+			return nil, ecode.ErrCacheDataBroken
+		}
+		if rs[i+2].(string) == "" {
+			return nil, ecode.ErrCacheDataBroken
+		}
+		result = append(result, &api.RequesterInfo{
+			Requester:     rs[i].(string),
+			RequesterType: "user",
+			Cursor:        score,
+			Name:          rs[i+2].(string),
+		})
+	}
+	return result, nil
+}
+func (d *Dao) RedisCountGroupRequests(ctx context.Context, groupid string) (uint64, error) {
+	key1 := "request_group_{" + groupid + "}"
+	key2 := key1 + "_extra"
+	return countRequestScript.Run(ctx, d.redis, []string{key1, key2}, defaultExpire).Uint64()
 }
 func (d *Dao) RedisRefreshGroupRequest(ctx context.Context, groupid, userid string) error {
-	key := "request_group_{" + groupid + "}"
-	e := refreshRequestScript.Run(ctx, d.redis, []string{key}, userid, defaultExpire).Err()
+	key1 := "request_group_{" + groupid + "}"
+	key2 := key1 + "_extra"
+	e := refreshRequestScript.Run(ctx, d.redis, []string{key1, key2}, userid, defaultExpire).Err()
 	if e != nil && e == gredis.Nil {
 		e = ecode.ErrRequestNotExist
 	}
 	return e
 }
 func (d *Dao) RedisDelGroupRequest(ctx context.Context, groupid, userid string) error {
-	key := "request_group_{" + groupid + "}"
-	return d.redis.ZRem(ctx, key, userid).Err()
+	key1 := "request_group_{" + groupid + "}"
+	key2 := key1 + "_extra"
+	return delRequestScript.Run(ctx, d.redis, []string{key1, key2}, userid, defaultExpire).Err()
 }
 
 //-----------------------user--------------------------------------

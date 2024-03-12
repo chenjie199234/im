@@ -93,6 +93,22 @@ service relation{
 		option (pbex.method)="post";
 		option (pbex.web_midwares)="token";
 	}
+	rpc get_self_requests_count(get_self_requests_count_req)returns(get_self_requests_count_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc get_self_requests(get_self_requests_req)returns(get_self_requests_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc get_group_requests_count(get_group_requests_count_req)returns(get_group_requests_count_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc get_group_requests(get_group_requests_req)returns(get_group_requests_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
 }
 //req can be set with pbex extentions
 //message examplereq{
@@ -172,7 +188,7 @@ message kick_group_resp{
 }
 
 message relation_info{
-	string target=1;
+	string target=1;//empty means this is self
 	string target_type=2;//user or group
 	string name=3;
 	uint32 duty=4;//only when the group's member use this field,0-normal,1-system owner,2-owner,3-admin
@@ -214,4 +230,39 @@ message update_duty_in_group_req{
 	uint32 new_duty=3[(pbex.uint_in)=0,(pbex.uint_in)=3];
 }
 message update_duty_in_group_resp{
+}
+
+message requester_info{
+	string requester=1;
+	string requester_type=2;
+	string name=3;
+	uint64 cursor=4;//timestamp in microseconds
+}
+message get_self_requests_count_req{
+}
+message get_self_requests_count_resp{
+	uint32 count=1;
+}
+message get_self_requests_req{
+	//the response will include this cursor
+	uint64 cursor=1;//timestamp in microseconds
+	string direction=2[(pbex.string_bytes_in)="after",(pbex.string_bytes_in)="before"];//
+}
+message get_self_requests_resp{
+	repeated requester_info requesters=1;
+}
+message get_group_requests_count_req{
+	string group_id=1[(pbex.string_bytes_len_eq)=24];
+}
+message get_group_requests_count_resp{
+	uint32 count=1;
+}
+message get_group_requests_req{
+	//the response will include this cursor
+	string group_id=1[(pbex.string_bytes_len_eq)=24];
+	uint64 cursor=2;//timestamp in microseconds
+	string direction=3[(pbex.string_bytes_in)="after",(pbex.string_bytes_in)="before"];//
+}
+message get_group_requests_resp{
+	repeated requester_info requesters=1;
 }

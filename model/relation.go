@@ -6,13 +6,13 @@ package model
 type Relation struct {
 	Main     string `bson:"main"`
 	MainType string `bson:"main_type"` //user or group
-	Sub      string `bson:"sub"`       //empty means this is the self
+	Sub      string `bson:"sub"`       //empty means this is self
 	SubType  string `bson:"sub_type"`  //user or group
 	Name     string `bson:"name"`
 	Duty     uint8  `bson:"duty"` //this field is used when MainType is group,0-normal,1-system owner,2-owner,3-admin
 }
 type RelationTarget struct {
-	Target     string `bson:"sub"`      //empty means this is the self
+	Target     string `bson:"sub"`      //empty means this is self
 	TargetType string `bson:"sub_type"` //user or group
 	Name       string `bson:"name"`
 	Duty       uint8  `bson:"duty"`

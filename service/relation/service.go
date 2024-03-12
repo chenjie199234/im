@@ -51,7 +51,8 @@ func (s *Service) MakeFriend(ctx context.Context, req *api.MakeFriendReq) (*api.
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	//check requester already set self's name
-	if _, e := s.relationDao.GetUserName(ctx, requester); e != nil {
+	requestername, e := s.relationDao.GetUserName(ctx, requester)
+	if e != nil {
 		log.Error(ctx, "[MakeFriend] check requester's name failed", log.String("requester", requester), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
@@ -99,7 +100,7 @@ func (s *Service) MakeFriend(ctx context.Context, req *api.MakeFriendReq) (*api.
 		}
 	}
 
-	if e := s.relationDao.RedisAddMakeFriendRequest(ctx, requester, req.UserId); e != nil {
+	if e := s.relationDao.RedisAddMakeFriendRequest(ctx, requester, requestername, req.UserId); e != nil {
 		log.Error(ctx, "[MakeFriend] redis op failed", log.String("requester", requester), log.String("accepter", req.UserId), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
@@ -164,6 +165,7 @@ func (s *Service) GroupInvite(ctx context.Context, req *api.GroupInviteReq) (*ap
 		log.Error(ctx, "[GroupInvite] check user's name failed", log.String("user_id", req.UserId), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
+	//check group name
 	//check inviter permission
 	if info, e := s.relationDao.GetGroupMember(ctx, req.GroupId, inviter); e != nil {
 		if e == ecode.ErrGroupMemberNotExist {
@@ -220,7 +222,12 @@ func (s *Service) GroupInvite(ctx context.Context, req *api.GroupInviteReq) (*ap
 			}
 		}
 	}
-	if e := s.relationDao.RedisAddGroupInviteRequest(ctx, req.GroupId, req.UserId); e != nil {
+	groupname, e := s.relationDao.GetGroupName(ctx, req.GroupId)
+	if e != nil {
+		log.Error(ctx, "[GroupInvite] get group's name failed", log.String("group_id", req.GroupId), log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	if e := s.relationDao.RedisAddGroupInviteRequest(ctx, req.GroupId, groupname, req.UserId); e != nil {
 		log.Error(ctx, "[GroupInvite] redis op failed",
 			log.String("inviter", inviter),
 			log.String("group_id", req.GroupId),
@@ -281,7 +288,8 @@ func (s *Service) GroupApply(ctx context.Context, req *api.GroupApplyReq) (*api.
 	md := metadata.GetMetadata(ctx)
 	requester := md["Token-User"]
 	//check requester already set self's name
-	if _, e := s.relationDao.GetUserName(ctx, requester); e != nil {
+	requestername, e := s.relationDao.GetUserName(ctx, requester)
+	if e != nil {
 		log.Error(ctx, "[GroupApply] check requester's name failed", log.String("requester", requester), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
@@ -334,7 +342,7 @@ func (s *Service) GroupApply(ctx context.Context, req *api.GroupApplyReq) (*api.
 			}
 		}
 	}
-	if e := s.relationDao.RedisAddGroupApplyRequest(ctx, requester, req.GroupId); e != nil {
+	if e := s.relationDao.RedisAddGroupApplyRequest(ctx, requester, requestername, req.GroupId); e != nil {
 		log.Error(ctx, "[GroupApply] redis op failed",
 			log.String("requester", requester),
 			log.String("group_id", req.GroupId),
@@ -700,6 +708,64 @@ func (s *Service) UpdateDutyInGroup(ctx context.Context, req *api.UpdateDutyInGr
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	return nil, nil
+}
+func (s *Service) GetSelfRequestsCount(ctx context.Context, req *api.GetSelfRequestsCountReq) (*api.GetSelfRequestsCountResp, error) {
+	md := metadata.GetMetadata(ctx)
+	userid := md["Token-User"]
+	count, e := s.relationDao.RedisCountUserRequests(ctx, userid)
+	if e != nil {
+		log.Error(ctx, "[GetSelfRequestsCount] redis op failed", log.String("user_id", userid), log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	return &api.GetSelfRequestsCountResp{Count: uint32(count)}, nil
+}
+func (s *Service) GetSelfRequests(ctx context.Context, req *api.GetSelfRequestsReq) (*api.GetSelfRequestsResp, error) {
+	md := metadata.GetMetadata(ctx)
+	userid := md["Token-User"]
+	requests, e := s.relationDao.RedisGetUserRequests(ctx, userid, req.Cursor, req.Direction, 10)
+	if e != nil {
+		log.Error(ctx, "[GetSelfRequests] redis op failed", log.String("user_id", userid), log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	return &api.GetSelfRequestsResp{Requesters: requests}, nil
+}
+func (s *Service) GetGroupRequestsCount(ctx context.Context, req *api.GetGroupRequestsCountReq) (*api.GetGroupRequestsCountResp, error) {
+	md := metadata.GetMetadata(ctx)
+	operator := md["Token-User"]
+	//check operator permission
+	info, e := s.relationDao.GetGroupMember(ctx, req.GroupId, operator)
+	if e != nil {
+		log.Error(ctx, "[GetGroupRequestsCount] get operator's group info failed", log.String("operator", operator), log.String("group_id", req.GroupId), log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	if info.Duty == 0 {
+		return nil, ecode.ErrPermission
+	}
+	count, e := s.relationDao.RedisCountGroupRequests(ctx, req.GroupId)
+	if e != nil {
+		log.Error(ctx, "[GetGroupRequestsCount] redis op failed", log.String("operator", operator), log.String("group_id", req.GroupId), log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	return &api.GetGroupRequestsCountResp{Count: uint32(count)}, nil
+}
+func (s *Service) GetGroupRequests(ctx context.Context, req *api.GetGroupRequestsReq) (*api.GetGroupRequestsResp, error) {
+	md := metadata.GetMetadata(ctx)
+	operator := md["Token-User"]
+	//check operator permission
+	info, e := s.relationDao.GetGroupMember(ctx, req.GroupId, operator)
+	if e != nil {
+		log.Error(ctx, "[GetGroupRequests] get operator's group info failed", log.String("operator", operator), log.String("group_id", req.GroupId), log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	if info.Duty == 0 {
+		return nil, ecode.ErrPermission
+	}
+	requests, e := s.relationDao.RedisGetGroupRequests(ctx, req.GroupId, req.Cursor, req.Direction, 10)
+	if e != nil {
+		log.Error(ctx, "[GetGroupRequests] redis op failed", log.String("operator", operator), log.String("group_id", req.GroupId), log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	return &api.GetGroupRequestsResp{Requesters: requests}, nil
 }
 
 // Stop -

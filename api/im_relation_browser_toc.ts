@@ -69,6 +69,110 @@ export class DelFriendResp{
 	fromOBJ(_obj:Object){
 	}
 }
+export class GetGroupRequestsCountReq{
+	group_id: string = ''
+	toJSON(){
+		let tmp = {}
+		if(this.group_id){
+			tmp["group_id"]=this.group_id
+		}
+		return tmp
+	}
+}
+export class GetGroupRequestsCountResp{
+	//Warning!!!Type is uint32,be careful of sign(+) and overflow
+	count: number = 0
+	fromOBJ(obj:Object){
+		if(obj["count"]){
+			this.count=obj["count"]
+		}
+	}
+}
+export class GetGroupRequestsReq{
+	//the response will include this cursor
+	group_id: string = ''
+	//Warning!!!Type is uint64,be careful of sign(+)
+	cursor: bigint = BigInt(0)//timestamp in microseconds
+	direction: string = ''//
+	toJSON(){
+		let tmp = {}
+		if(this.group_id){
+			tmp["group_id"]=this.group_id
+		}
+		if(this.cursor){
+			tmp["cursor"]=this.cursor.toString()
+		}
+		if(this.direction){
+			tmp["direction"]=this.direction
+		}
+		return tmp
+	}
+}
+export class GetGroupRequestsResp{
+	requesters: Array<RequesterInfo|null>|null = null
+	fromOBJ(obj:Object){
+		if(obj["requesters"] && obj["requesters"].length>0){
+			this.requesters=new Array<RequesterInfo|null>()
+			for(let value of obj["requesters"]){
+				if(value){
+					let tmp=new RequesterInfo()
+					tmp.fromOBJ(value)
+					this.requesters.push(tmp)
+				}else{
+					this.requesters.push(null)
+				}
+			}
+		}
+	}
+}
+export class GetSelfRequestsCountReq{
+	toJSON(){
+		let tmp = {}
+		return tmp
+	}
+}
+export class GetSelfRequestsCountResp{
+	//Warning!!!Type is uint32,be careful of sign(+) and overflow
+	count: number = 0
+	fromOBJ(obj:Object){
+		if(obj["count"]){
+			this.count=obj["count"]
+		}
+	}
+}
+export class GetSelfRequestsReq{
+	//the response will include this cursor
+	//Warning!!!Type is uint64,be careful of sign(+)
+	cursor: bigint = BigInt(0)//timestamp in microseconds
+	direction: string = ''//
+	toJSON(){
+		let tmp = {}
+		if(this.cursor){
+			tmp["cursor"]=this.cursor.toString()
+		}
+		if(this.direction){
+			tmp["direction"]=this.direction
+		}
+		return tmp
+	}
+}
+export class GetSelfRequestsResp{
+	requesters: Array<RequesterInfo|null>|null = null
+	fromOBJ(obj:Object){
+		if(obj["requesters"] && obj["requesters"].length>0){
+			this.requesters=new Array<RequesterInfo|null>()
+			for(let value of obj["requesters"]){
+				if(value){
+					let tmp=new RequesterInfo()
+					tmp.fromOBJ(value)
+					this.requesters.push(tmp)
+				}else{
+					this.requesters.push(null)
+				}
+			}
+		}
+	}
+}
 export class GroupApplyReq{
 	group_id: string = ''
 	toJSON(){
@@ -230,7 +334,7 @@ export class RefuseMakeFriendResp{
 	}
 }
 export class RelationInfo{
-	target: string = ''
+	target: string = ''//empty means this is self
 	target_type: string = ''//user or group
 	name: string = ''
 	//Warning!!!Type is uint32,be careful of sign(+) and overflow
@@ -282,6 +386,27 @@ export class RelationsResp{
 		}
 	}
 }
+export class RequesterInfo{
+	requester: string = ''
+	requester_type: string = ''
+	name: string = ''
+	//Warning!!!Type is uint64,be careful of sign(+)
+	cursor: bigint = BigInt(0)//timestamp in microseconds
+	fromOBJ(obj:Object){
+		if(obj["requester"]){
+			this.requester=obj["requester"]
+		}
+		if(obj["requester_type"]){
+			this.requester_type=obj["requester_type"]
+		}
+		if(obj["name"]){
+			this.name=obj["name"]
+		}
+		if(obj["cursor"]){
+			this.cursor=BigInt(obj["cursor"])
+		}
+	}
+}
 export class UpdateDutyInGroupReq{
 	user_id: string = ''
 	group_id: string = ''
@@ -324,6 +449,7 @@ export class UpdateNameInGroupResp{
 	}
 }
 export class UpdateUserRelationNameReq{
+	//if target_type == "user" && (target) == (userid in token) means update self's name
 	target: string = ''
 	target_type: string = ''
 	new_name: string = ''
@@ -400,6 +526,10 @@ const _WebPathRelationGroupMembers: string ="/im.relation/group_members";
 const _WebPathRelationUpdateUserRelationName: string ="/im.relation/update_user_relation_name";
 const _WebPathRelationUpdateNameInGroup: string ="/im.relation/update_name_in_group";
 const _WebPathRelationUpdateDutyInGroup: string ="/im.relation/update_duty_in_group";
+const _WebPathRelationGetSelfRequestsCount: string ="/im.relation/get_self_requests_count";
+const _WebPathRelationGetSelfRequests: string ="/im.relation/get_self_requests";
+const _WebPathRelationGetGroupRequestsCount: string ="/im.relation/get_group_requests_count";
+const _WebPathRelationGetGroupRequests: string ="/im.relation/get_group_requests";
 //ToC means this is for users
 export class RelationBrowserClientToC {
 	constructor(host: string){
@@ -608,6 +738,54 @@ export class RelationBrowserClientToC {
 		header["Content-Type"] = "application/json"
 		call(timeout,this.host+_WebPathRelationUpdateDutyInGroup,{method:"POST",headers:header,body:JSON.stringify(req)},error,function(arg: Object){
 			let r=new UpdateDutyInGroupResp()
+			r.fromOBJ(arg)
+			success(r)
+		})
+	}
+	//timeout's unit is millisecond,it will be used when > 0
+	get_self_requests_count(header: Object,req: GetSelfRequestsCountReq,timeout: number,error: (arg: LogicError)=>void,success: (arg: GetSelfRequestsCountResp)=>void){
+		if(!header){
+			header={}
+		}
+		header["Content-Type"] = "application/json"
+		call(timeout,this.host+_WebPathRelationGetSelfRequestsCount,{method:"POST",headers:header,body:JSON.stringify(req)},error,function(arg: Object){
+			let r=new GetSelfRequestsCountResp()
+			r.fromOBJ(arg)
+			success(r)
+		})
+	}
+	//timeout's unit is millisecond,it will be used when > 0
+	get_self_requests(header: Object,req: GetSelfRequestsReq,timeout: number,error: (arg: LogicError)=>void,success: (arg: GetSelfRequestsResp)=>void){
+		if(!header){
+			header={}
+		}
+		header["Content-Type"] = "application/json"
+		call(timeout,this.host+_WebPathRelationGetSelfRequests,{method:"POST",headers:header,body:JSON.stringify(req)},error,function(arg: Object){
+			let r=new GetSelfRequestsResp()
+			r.fromOBJ(arg)
+			success(r)
+		})
+	}
+	//timeout's unit is millisecond,it will be used when > 0
+	get_group_requests_count(header: Object,req: GetGroupRequestsCountReq,timeout: number,error: (arg: LogicError)=>void,success: (arg: GetGroupRequestsCountResp)=>void){
+		if(!header){
+			header={}
+		}
+		header["Content-Type"] = "application/json"
+		call(timeout,this.host+_WebPathRelationGetGroupRequestsCount,{method:"POST",headers:header,body:JSON.stringify(req)},error,function(arg: Object){
+			let r=new GetGroupRequestsCountResp()
+			r.fromOBJ(arg)
+			success(r)
+		})
+	}
+	//timeout's unit is millisecond,it will be used when > 0
+	get_group_requests(header: Object,req: GetGroupRequestsReq,timeout: number,error: (arg: LogicError)=>void,success: (arg: GetGroupRequestsResp)=>void){
+		if(!header){
+			header={}
+		}
+		header["Content-Type"] = "application/json"
+		call(timeout,this.host+_WebPathRelationGetGroupRequests,{method:"POST",headers:header,body:JSON.stringify(req)},error,function(arg: Object){
+			let r=new GetGroupRequestsResp()
 			r.fromOBJ(arg)
 			success(r)
 		})

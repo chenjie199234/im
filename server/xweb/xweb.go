@@ -26,7 +26,7 @@ func StartWebServer() {
 			temp, e := tls.LoadX509KeyPair(cert, key)
 			if e != nil {
 				log.Error(nil, "[xweb] load cert failed:", log.String("cert", cert), log.String("key", key), log.CError(e))
-				return 
+				return
 			}
 			certificates = append(certificates, temp)
 		}
@@ -47,6 +47,8 @@ func StartWebServer() {
 
 	//you just need to register your service here
 	api.RegisterStatusWebServer(r, service.SvcStatus, mids.AllMids())
+	api.RegisterRelationWebServer(r, service.SvcRelation, mids.AllMids())
+	api.RegisterChatWebServer(r, service.SvcChat, mids.AllMids())
 	//example
 	//api.RegisterExampleWebServer(r, service.SvcExample, mids.AllMids())
 
@@ -80,3 +82,4 @@ func StopWebServer(force bool) {
 		s.StopWebServer(force)
 	}
 }
+

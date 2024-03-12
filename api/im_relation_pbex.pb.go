@@ -171,3 +171,30 @@ func (m *UpdateDutyInGroupReq) Validate() (errstr string) {
 	}
 	return ""
 }
+
+// return empty means pass
+func (m *GetSelfRequestsReq) Validate() (errstr string) {
+	if m.GetDirection() != "after" && m.GetDirection() != "before" {
+		return "field: direction in object: get_self_requests_req check value str in failed"
+	}
+	return ""
+}
+
+// return empty means pass
+func (m *GetGroupRequestsCountReq) Validate() (errstr string) {
+	if len(m.GetGroupId()) != 24 {
+		return "field: group_id in object: get_group_requests_count_req check value str len eq failed"
+	}
+	return ""
+}
+
+// return empty means pass
+func (m *GetGroupRequestsReq) Validate() (errstr string) {
+	if len(m.GetGroupId()) != 24 {
+		return "field: group_id in object: get_group_requests_req check value str len eq failed"
+	}
+	if m.GetDirection() != "after" && m.GetDirection() != "before" {
+		return "field: direction in object: get_group_requests_req check value str in failed"
+	}
+	return ""
+}
