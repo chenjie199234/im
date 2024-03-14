@@ -35,7 +35,7 @@ type sourceConfig struct {
 
 type RawServerConfig struct {
 	Certs          map[string]string `json:"certs"` //key cert path,value private key path,if this is not empty,tls will be used
-	GroupNum       uint8             `json:"group_num"`
+	GroupNum       uint16            `json:"group_num"`
 	ConnectTimeout ctime.Duration    `json:"connect_timeout"`
 	HeartProbe     ctime.Duration    `json:"heart_probe"`
 }

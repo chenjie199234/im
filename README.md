@@ -56,7 +56,7 @@ collection: msg
 {
     _id:ObjectId("xxx"),//provide timestamp
     chat_key:"",//user: join(sort(sender,target),"-"),group:group_id
-    sender:ObjectId("xxx"),//sender user_id
+    sender:"",//sender user_id
     msg:"",
     extra:"",
     msg_index:1,//start from 1
@@ -72,7 +72,7 @@ sh.shardCollection("im.msg",{chat_key:"hashed"});
 collection: ack
 {
     chat_key:"",//user: join(sort(sender,target),"-"),group:group_id
-    acker:ObjectId("xxx"),//acker user_id
+    acker:"",//acker user_id
     read_msg_index:1,
 }
 use im;

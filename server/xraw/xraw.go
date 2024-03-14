@@ -30,13 +30,16 @@ func StartRawServer() {
 	s, _ = stream.NewInstance(&stream.InstanceConfig{
 		TcpC:               &stream.TcpConfig{ConnectTimeout: c.ConnectTimeout.StdDuration()},
 		HeartprobeInterval: c.HeartProbe.StdDuration(),
-		GroupNum:           uint32(c.GroupNum),
+		GroupNum:           c.GroupNum,
 		VerifyFunc:         service.SvcChat.RawVerify,
 		OnlineFunc:         service.SvcChat.RawOnline,
 		PingPongFunc:       service.SvcChat.RawPingPong,
 		UserdataFunc:       service.SvcChat.RawUser,
 		OfflineFunc:        service.SvcChat.RawOffline,
 	})
+
+	service.SvcChat.SetRawTCP(s)
+
 	if e := s.StartServer(":8080", tlsc); e != nil && e != stream.ErrServerClosed {
 		log.Error(nil, "[xrawchat] start server failed", log.CError(e))
 		return

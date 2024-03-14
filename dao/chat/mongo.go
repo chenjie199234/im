@@ -13,40 +13,31 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// if viewer is NilObjectID,get the max msg index in this chatkey
-// if viewer is not NilObjectID,get the max msg index which sender != viewer in this chatkey
-func (d *Dao) MongoGetMaxMsgIndex(ctx context.Context, viewer primitive.ObjectID, chatkey string) (msgindex uint64, e error) {
+func (d *Dao) MongoGetMaxMsgIndex(ctx context.Context, chatkey string) (uint64, error) {
 	filter := bson.M{"chat_key": chatkey}
-	if !viewer.IsZero() {
-		filter["sender"] = bson.M{"$ne": viewer}
-	}
 	opts := options.FindOne().SetSort(bson.M{"msg_index": -1}).SetProjection(bson.M{"msg_index": 1})
 	msg := &model.MsgInfo{}
-	if e = d.mongo.Database("im").Collection("msg").FindOne(ctx, filter, opts).Decode(msg); e != nil && e != mongo.ErrNoDocuments {
-		return
-	}
-	if e != nil {
-		e = nil
-		msgindex = 0
+	if e := d.mongo.Database("im").Collection("msg").FindOne(ctx, filter, opts).Decode(msg); e != nil && e != mongo.ErrNoDocuments {
+		return 0, e
+	} else if e != nil {
+		//mongo.ErrNoDocuments
+		return 0, nil
 	} else {
-		msgindex = msg.MsgIndex
+		return msg.MsgIndex, nil
 	}
-	return
 }
-func (d *Dao) MongoGetMaxRecallIndex(ctx context.Context, chatkey string) (recallindex uint64, e error) {
+func (d *Dao) MongoGetMaxRecallIndex(ctx context.Context, chatkey string) (uint64, error) {
 	filter := bson.M{"chat_key": chatkey, "recall_index": bson.M{"$exists": true}}
 	opts := options.FindOne().SetSort(bson.M{"recall_index": -1}).SetProjection(bson.M{"recall_index": 1})
 	msg := &model.MsgInfo{}
-	if e = d.mongo.Database("im").Collection("msg").FindOne(ctx, filter, opts).Decode(msg); e != nil && e != mongo.ErrNoDocuments {
-		return
-	}
-	if e != nil {
-		e = nil
-		recallindex = 0
+	if e := d.mongo.Database("im").Collection("msg").FindOne(ctx, filter, opts).Decode(msg); e != nil && e != mongo.ErrNoDocuments {
+		return 0, e
+	} else if e != nil {
+		//mongo.ErrNoDocuments
+		return 0, nil
 	} else {
-		recallindex = msg.RecallIndex
+		return msg.RecallIndex, nil
 	}
-	return
 }
 
 // mintimestamp: unit second
@@ -132,7 +123,7 @@ func (d *Dao) MongoSend(ctx context.Context, msg *model.MsgInfo) error {
 		return nil
 	}
 }
-func (d *Dao) MongoRecall(ctx context.Context, sender primitive.ObjectID, chatkey string, msgindex uint64) (recallindex uint64, e error) {
+func (d *Dao) MongoRecall(ctx context.Context, sender, chatkey string, msgindex uint64) (recallindex uint64, e error) {
 	for {
 		tmp := &model.MsgInfo{}
 		filter := bson.M{"chat_key": chatkey}
@@ -166,28 +157,24 @@ func (d *Dao) MongoRecall(ctx context.Context, sender primitive.ObjectID, chatke
 		} else {
 			e = ecode.ErrMsgOwnerWrong
 		}
+		return
 	}
 }
-func (d *Dao) MongoAck(ctx context.Context, acker primitive.ObjectID, chatkey string, msgindex uint64) error {
-	maxmsgindex, e := d.MongoGetMaxMsgIndex(ctx, acker, chatkey)
-	if e != nil {
-		return e
+func (d *Dao) MongoGetAck(ctx context.Context, acker, chatkey string) (uint64, error) {
+	filter := bson.M{"chat_key": chatkey, "acker": acker}
+	ack := &model.Ack{}
+	if e := d.mongo.Database("im").Collection("ack").FindOne(ctx, filter).Decode(ack); e != nil && e != mongo.ErrNoDocuments {
+		return 0, e
+	} else if e != nil {
+		//mongo.ErrNoDocuments
+		return 0, nil
+	} else {
+		return ack.ReadMsgIndex, nil
 	}
-	if maxmsgindex < msgindex {
-		return ecode.ErrMsgNotExist
-	}
+}
+func (d *Dao) MongoAck(ctx context.Context, acker string, chatkey string, msgindex uint64) error {
 	filter := bson.M{"chat_key": chatkey, "acker": acker}
 	updater := bson.M{"$max": bson.M{"read_msg_index": msgindex}}
-	_, e = d.mongo.Database("im").Collection("ack").UpdateOne(ctx, filter, updater, options.Update().SetUpsert(true))
+	_, e := d.mongo.Database("im").Collection("ack").UpdateOne(ctx, filter, updater, options.Update().SetUpsert(true))
 	return e
-}
-func (d *Dao) MongoCountUnread(ctx context.Context, acker primitive.ObjectID, chatkey string) (uint64, error) {
-	//get ack first
-	ack := &model.Ack{}
-	if e := d.mongo.Database("im").Collection("ack").FindOne(ctx, bson.M{"chat_key": chatkey, "acker": acker}).Decode(ack); e != nil && e != mongo.ErrNoDocuments {
-		return 0, e
-	}
-	//count
-	count, e := d.mongo.Database("im").Collection("msg").CountDocuments(ctx, bson.M{"chat_key": chatkey, "msg_index": bson.M{"$gt": ack.ReadMsgIndex}, "sender": bson.M{"$ne": acker}})
-	return uint64(count), e
 }
