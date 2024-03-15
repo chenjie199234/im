@@ -13,7 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func (d *Dao) MongoGetMaxMsgIndex(ctx context.Context, chatkey string) (uint64, error) {
+func (d *Dao) MongoGetMaxMsgIndex(ctx context.Context, chatkey string) (uint32, error) {
 	filter := bson.M{"chat_key": chatkey}
 	opts := options.FindOne().SetSort(bson.M{"msg_index": -1}).SetProjection(bson.M{"msg_index": 1})
 	msg := &model.MsgInfo{}
@@ -26,7 +26,7 @@ func (d *Dao) MongoGetMaxMsgIndex(ctx context.Context, chatkey string) (uint64, 
 		return msg.MsgIndex, nil
 	}
 }
-func (d *Dao) MongoGetMaxRecallIndex(ctx context.Context, chatkey string) (uint64, error) {
+func (d *Dao) MongoGetMaxRecallIndex(ctx context.Context, chatkey string) (uint32, error) {
 	filter := bson.M{"chat_key": chatkey, "recall_index": bson.M{"$exists": true}}
 	opts := options.FindOne().SetSort(bson.M{"recall_index": -1}).SetProjection(bson.M{"recall_index": 1})
 	msg := &model.MsgInfo{}
@@ -41,7 +41,7 @@ func (d *Dao) MongoGetMaxRecallIndex(ctx context.Context, chatkey string) (uint6
 }
 
 // mintimestamp: unit second
-func (d *Dao) MongoGetMsgs(ctx context.Context, chatkey, direction string, startMsgIndex, num uint64, mintimestamp uint32) ([]*model.MsgInfo, error) {
+func (d *Dao) MongoGetMsgs(ctx context.Context, chatkey, direction string, startMsgIndex, num, mintimestamp uint32) ([]*model.MsgInfo, error) {
 	filter := bson.M{"chat_key": chatkey}
 	opts := options.Find().SetLimit(int64(num))
 	if direction == "after" {
@@ -69,7 +69,7 @@ func (d *Dao) MongoGetMsgs(ctx context.Context, chatkey, direction string, start
 
 // mintimestamp: unit second
 // return key:recall index,value:msg index
-func (d *Dao) MongoGetRecalls(ctx context.Context, chatkey, direction string, startRecallIndex, num uint64, mintimestamp uint32) (map[uint64]uint64, error) {
+func (d *Dao) MongoGetRecalls(ctx context.Context, chatkey, direction string, startRecallIndex, num, mintimestamp uint32) (map[uint32]uint32, error) {
 	filter := bson.M{"chat_key": chatkey}
 	opts := options.Find().SetLimit(int64(num)).SetProjection(bson.M{"msg_index": 1, "recall_index": 1})
 	if direction == "after" {
@@ -92,7 +92,7 @@ func (d *Dao) MongoGetRecalls(ctx context.Context, chatkey, direction string, st
 	if e := cursor.All(ctx, &tmp); e != nil {
 		return nil, e
 	}
-	r := make(map[uint64]uint64, num)
+	r := make(map[uint32]uint32, num)
 	for _, v := range tmp {
 		r[v.RecallIndex] = v.MsgIndex
 	}
@@ -120,10 +120,10 @@ func (d *Dao) MongoSend(ctx context.Context, msg *model.MsgInfo) error {
 		} else {
 			msg.ID = r.InsertedID.(primitive.ObjectID)
 		}
-		return nil
+		return d.MongoAck(ctx, msg.Sender, msg.ChatKey, msg.MsgIndex)
 	}
 }
-func (d *Dao) MongoRecall(ctx context.Context, sender, chatkey string, msgindex uint64) (recallindex uint64, e error) {
+func (d *Dao) MongoRecall(ctx context.Context, sender, chatkey string, msgindex uint32) (recallindex uint32, e error) {
 	for {
 		tmp := &model.MsgInfo{}
 		filter := bson.M{"chat_key": chatkey}
@@ -160,7 +160,7 @@ func (d *Dao) MongoRecall(ctx context.Context, sender, chatkey string, msgindex 
 		return
 	}
 }
-func (d *Dao) MongoGetAck(ctx context.Context, acker, chatkey string) (uint64, error) {
+func (d *Dao) MongoGetAck(ctx context.Context, acker, chatkey string) (uint32, error) {
 	filter := bson.M{"chat_key": chatkey, "acker": acker}
 	ack := &model.Ack{}
 	if e := d.mongo.Database("im").Collection("ack").FindOne(ctx, filter).Decode(ack); e != nil && e != mongo.ErrNoDocuments {
@@ -172,7 +172,7 @@ func (d *Dao) MongoGetAck(ctx context.Context, acker, chatkey string) (uint64, e
 		return ack.ReadMsgIndex, nil
 	}
 }
-func (d *Dao) MongoAck(ctx context.Context, acker string, chatkey string, msgindex uint64) error {
+func (d *Dao) MongoAck(ctx context.Context, acker string, chatkey string, msgindex uint32) error {
 	filter := bson.M{"chat_key": chatkey, "acker": acker}
 	updater := bson.M{"$max": bson.M{"read_msg_index": msgindex}}
 	_, e := d.mongo.Database("im").Collection("ack").UpdateOne(ctx, filter, updater, options.Update().SetUpsert(true))

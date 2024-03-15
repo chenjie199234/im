@@ -80,6 +80,6 @@ func (d *Dao) GetIndex(ctx context.Context, userid, chatkey string) (*model.IMIn
 		return nil, e
 	}
 	r := (*model.IMIndex)(unsafeIndex)
-	r.AckIndex = *(*uint64)(unsafeAck)
+	r.AckIndex = *(*uint32)(unsafeAck)
 	return r, nil
 }

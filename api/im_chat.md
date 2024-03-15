@@ -34,11 +34,11 @@ Success: httpcode:200
 ------------------------------------------------------------------------------------------------------------
 {
 	//msg index start from 1
-	//uint64 use string to prevent overflow
-	"msg_index":"0",
+	//uint32
+	"msg_index":0,
 	//unit: nanosecond
-	//uint64 use string to prevent overflow
-	"timestamp":"0"
+	//uint32
+	"timestamp":0
 }
 ------------------------------------------------------------------------------------------------------------
 ```
@@ -55,8 +55,8 @@ Content-Type: application/json
 	"target":"str",
 	//value must in ["user","group"]
 	"target_type":"str",
-	//uint64 use string to prevent overflow
-	"msg_index":"0"
+	//uint32
+	"msg_index":0
 }
 ------------------------------------------------------------------------------------------------------------
 ```
@@ -69,8 +69,8 @@ Fail:    httpcode:4xx/5xx
 Success: httpcode:200
 ------------------------------------------------------------------------------------------------------------
 {
-	//uint64 use string to prevent overflow
-	"recall_index":"0"
+	//uint32
+	"recall_index":0
 }
 ------------------------------------------------------------------------------------------------------------
 ```
@@ -87,8 +87,8 @@ Content-Type: application/json
 	"target":"str",
 	//value must in ["user","group"]
 	"target_type":"str",
-	//uint64 use string to prevent overflow
-	"msg_index":"0"
+	//uint32
+	"msg_index":0
 }
 ------------------------------------------------------------------------------------------------------------
 ```
@@ -121,15 +121,15 @@ Content-Type: application/json
 	"direction":"str",
 	//the response will include this index
 	//if this is 0,means don't need to pull the msgs
-	//uint64 use string to prevent overflow
-	"start_msg_index":"0",
+	//uint32
+	"start_msg_index":0,
 	//if this is 0,means don't need to pull the recalls
-	//uint64 use string to prevent overflow
-	"start_recall_index":"0",
-	//uint64 use string to prevent overflow
+	//uint32
+	"start_recall_index":0,
+	//uint32
 	//value must > 0
 	//value must <= 50
-	"count":"0"
+	"count":0
 }
 ------------------------------------------------------------------------------------------------------------
 ```
@@ -144,21 +144,21 @@ Success: httpcode:200
 {
 	//object msg_info
 	"msgs":[{},{}],
-	//kv map,key-uint64 use string is json's require,value-uint64 use string to prevent overflow
-	"recalls":{"0":"0","0":"0"}
+	//kv map,key-uint32 use string is json's require,value-uint32
+	"recalls":{"0":0,"0":0}
 }
 ------------------------------------------------------------------------------------------------------------
 msg_info: {
 	//msg index start from 1
-	//uint64 use string to prevent overflow
-	"msg_index":"0",
+	//uint32
+	"msg_index":0,
 	//recall index start 1,0 means didn't recall
-	//uint64 use string to prevent overflow
-	"recall_index":"0",
+	//uint32
+	"recall_index":0,
 	"msg":"str",
 	"extra":"str",
-	//uint64 use string to prevent overflow
-	"timestamp":"0",
+	//uint32
+	"timestamp":0,
 	"sender":"str",
 	"target":"str",
 	"target_type":"str"

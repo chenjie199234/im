@@ -60,33 +60,33 @@ message send_req{
 }
 message send_resp{
 	//msg index start from 1
-	uint64 msg_index=1;
+	uint32 msg_index=1;
 	//unit: nanosecond
-	uint64 timestamp=2;
+	uint32 timestamp=2;
 }
 message recall_req{
 	string target=1[(pbex.string_bytes_len_gt)=0];
 	string target_type=2[(pbex.string_bytes_in)="user",(pbex.string_bytes_in)="group"];
-	uint64 msg_index=3;
+	uint32 msg_index=3;
 }
 message recall_resp{
-	uint64 recall_index=1;
+	uint32 recall_index=1;
 }
 message ack_req{
 	string target=1[(pbex.string_bytes_len_gt)=0];
 	string target_type=2[(pbex.string_bytes_in)="user",(pbex.string_bytes_in)="group"];
-	uint64 msg_index=3;
+	uint32 msg_index=3;
 }
 message ack_resp{
 }
 message msg_info{
 	//msg index start from 1
-	uint64 msg_index=1;
+	uint32 msg_index=1;
 	//recall index start 1,0 means didn't recall
-	uint64 recall_index=2;
+	uint32 recall_index=2;
 	string msg=3;
 	string extra=4;
-	uint64 timestamp=5;
+	uint32 timestamp=5;
 	string sender=6;
 	string target=7;
 	string target_type=8;
@@ -96,11 +96,11 @@ message pull_req{
 	string target_type=2[(pbex.string_bytes_in)="user",(pbex.string_bytes_in)="group"];
 	string direction=3[(pbex.string_bytes_in)="before",(pbex.string_bytes_in)="after"];
 	//the response will include this index
-	uint64 start_msg_index=4;//if this is 0,means don't need to pull the msgs
-	uint64 start_recall_index=5;//if this is 0,means don't need to pull the recalls
-	uint64 count=6[(pbex.uint_gt)=0,(pbex.uint_lte)=50];
+	uint32 start_msg_index=4;//if this is 0,means don't need to pull the msgs
+	uint32 start_recall_index=5;//if this is 0,means don't need to pull the recalls
+	uint32 count=6[(pbex.uint_gt)=0,(pbex.uint_lte)=50];
 }
 message pull_resp{
 	repeated msg_info msgs=1;
-	map<uint64,uint64> recalls=2;
+	map<uint32,uint32> recalls=2;
 }

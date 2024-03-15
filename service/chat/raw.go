@@ -31,13 +31,13 @@ func (w *writer) add(data []byte) {
 		default:
 		}
 	} else if count > 512 {
-		log.Error(nil, "[RawWriter] too many stacking msg need to send",
+		log.Error(nil, "[RawWriter] too many stacking msgs need to send",
 			log.String("user_id", w.p.GetUniqueID()),
 			log.String("remote_addr", w.p.GetRemoteAddr()),
 			log.String("real_ip", w.p.GetRealPeerIP()))
 		w.p.Close(false)
 	} else if count > 128 {
-		log.Warn(nil, "[RawWriter] too many stacking msg need to send",
+		log.Warn(nil, "[RawWriter] too many stacking msgs need to send",
 			log.String("user_id", w.p.GetUniqueID()),
 			log.String("remote_addr", w.p.GetRemoteAddr()),
 			log.String("real_ip", w.p.GetRealPeerIP()))

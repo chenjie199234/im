@@ -57,7 +57,7 @@ return 0`)
 //------------------------------------index-----------------------------------
 
 // if MsgIndex or RecallIndex or AckIndex is 0 means this kind of index will not be setted
-func (d *Dao) RedisSetIndex(ctx context.Context, userid, chatkey string, MsgIndex, RecallIndex, AckIndex uint64) error {
+func (d *Dao) RedisSetIndex(ctx context.Context, userid, chatkey string, MsgIndex, RecallIndex, AckIndex uint32) error {
 	key := "im_user_{" + userid + "}"
 	field1 := chatkey + "_exist"
 	field2 := chatkey + "_msg"
@@ -98,21 +98,21 @@ func (d *Dao) RedisGetIndex(ctx context.Context, userid, chatkey string) (*model
 	}
 	var MsgIndex, RecallIndex, AckIndex uint64
 	if rs[1] != nil {
-		if MsgIndex, e = strconv.ParseUint(rs[0].(string), 10, 64); e != nil {
+		if MsgIndex, e = strconv.ParseUint(rs[0].(string), 10, 32); e != nil {
 			return nil, ecode.ErrCacheDataBroken
 		}
 	}
 	if rs[2] != nil {
-		if RecallIndex, e = strconv.ParseUint(rs[1].(string), 10, 64); e != nil {
+		if RecallIndex, e = strconv.ParseUint(rs[1].(string), 10, 32); e != nil {
 			return nil, ecode.ErrCacheDataBroken
 		}
 	}
 	if rs[3] != nil {
-		if AckIndex, e = strconv.ParseUint(rs[2].(string), 10, 64); e != nil {
+		if AckIndex, e = strconv.ParseUint(rs[2].(string), 10, 32); e != nil {
 			return nil, ecode.ErrCacheDataBroken
 		}
 	}
-	return &model.IMIndex{MsgIndex: MsgIndex, RecallIndex: RecallIndex, AckIndex: AckIndex}, nil
+	return &model.IMIndex{MsgIndex: uint32(MsgIndex), RecallIndex: uint32(RecallIndex), AckIndex: uint32(AckIndex)}, nil
 }
 
 // return: key:chatkey,value:index
@@ -131,37 +131,37 @@ func (d *Dao) RedisGetIndexAll(ctx context.Context, userid string) (map[string]*
 				r[chatkey] = &model.IMIndex{}
 			}
 		} else if strings.HasSuffix(k, "_msg") {
-			index, e := strconv.ParseUint(v, 10, 64)
+			index, e := strconv.ParseUint(v, 10, 32)
 			if e != nil {
 				return nil, ecode.ErrCacheDataBroken
 			}
 			chatkey = k[:len(k)-4]
 			if v, ok := r[chatkey]; !ok {
-				r[chatkey] = &model.IMIndex{MsgIndex: index}
+				r[chatkey] = &model.IMIndex{MsgIndex: uint32(index)}
 			} else {
-				v.MsgIndex = index
+				v.MsgIndex = uint32(index)
 			}
 		} else if strings.HasSuffix(k, "_recall") {
-			index, e := strconv.ParseUint(v, 10, 64)
+			index, e := strconv.ParseUint(v, 10, 32)
 			if e != nil {
 				return nil, ecode.ErrCacheDataBroken
 			}
 			chatkey = k[:len(k)-7]
 			if v, ok := r[chatkey]; !ok {
-				r[chatkey] = &model.IMIndex{RecallIndex: index}
+				r[chatkey] = &model.IMIndex{RecallIndex: uint32(index)}
 			} else {
-				v.RecallIndex = index
+				v.RecallIndex = uint32(index)
 			}
 		} else if strings.HasSuffix(k, "_ack") {
-			index, e := strconv.ParseUint(v, 10, 64)
+			index, e := strconv.ParseUint(v, 10, 32)
 			if e != nil {
 				return nil, ecode.ErrCacheDataBroken
 			}
 			chatkey = k[:len(k)-4]
 			if v, ok := r[chatkey]; !ok {
-				r[chatkey] = &model.IMIndex{AckIndex: index}
+				r[chatkey] = &model.IMIndex{AckIndex: uint32(index)}
 			} else {
-				v.AckIndex = index
+				v.AckIndex = uint32(index)
 			}
 		}
 	}

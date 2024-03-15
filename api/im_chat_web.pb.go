@@ -308,12 +308,12 @@ func _Chat_Recall_WebHandler(handler func(context.Context, *RecallReq) (*RecallR
 			}
 			// req.MsgIndex
 			if form := ctx.GetForm("msg_index"); len(form) != 0 {
-				if num, e := strconv.ParseUint(form, 10, 64); e != nil {
+				if num, e := strconv.ParseUint(form, 10, 32); e != nil {
 					log.Error(ctx, "[/im.chat/recall] data format wrong", log.String("field", "msg_index"))
 					ctx.Abort(cerror.ErrReq)
 					return
 				} else {
-					req.MsgIndex = num
+					req.MsgIndex = uint32(num)
 				}
 			}
 		}
@@ -387,12 +387,12 @@ func _Chat_Ack_WebHandler(handler func(context.Context, *AckReq) (*AckResp, erro
 			}
 			// req.MsgIndex
 			if form := ctx.GetForm("msg_index"); len(form) != 0 {
-				if num, e := strconv.ParseUint(form, 10, 64); e != nil {
+				if num, e := strconv.ParseUint(form, 10, 32); e != nil {
 					log.Error(ctx, "[/im.chat/ack] data format wrong", log.String("field", "msg_index"))
 					ctx.Abort(cerror.ErrReq)
 					return
 				} else {
-					req.MsgIndex = num
+					req.MsgIndex = uint32(num)
 				}
 			}
 		}
@@ -470,32 +470,32 @@ func _Chat_Pull_WebHandler(handler func(context.Context, *PullReq) (*PullResp, e
 			}
 			// req.StartMsgIndex
 			if form := ctx.GetForm("start_msg_index"); len(form) != 0 {
-				if num, e := strconv.ParseUint(form, 10, 64); e != nil {
+				if num, e := strconv.ParseUint(form, 10, 32); e != nil {
 					log.Error(ctx, "[/im.chat/pull] data format wrong", log.String("field", "start_msg_index"))
 					ctx.Abort(cerror.ErrReq)
 					return
 				} else {
-					req.StartMsgIndex = num
+					req.StartMsgIndex = uint32(num)
 				}
 			}
 			// req.StartRecallIndex
 			if form := ctx.GetForm("start_recall_index"); len(form) != 0 {
-				if num, e := strconv.ParseUint(form, 10, 64); e != nil {
+				if num, e := strconv.ParseUint(form, 10, 32); e != nil {
 					log.Error(ctx, "[/im.chat/pull] data format wrong", log.String("field", "start_recall_index"))
 					ctx.Abort(cerror.ErrReq)
 					return
 				} else {
-					req.StartRecallIndex = num
+					req.StartRecallIndex = uint32(num)
 				}
 			}
 			// req.Count
 			if form := ctx.GetForm("count"); len(form) != 0 {
-				if num, e := strconv.ParseUint(form, 10, 64); e != nil {
+				if num, e := strconv.ParseUint(form, 10, 32); e != nil {
 					log.Error(ctx, "[/im.chat/pull] data format wrong", log.String("field", "count"))
 					ctx.Abort(cerror.ErrReq)
 					return
 				} else {
-					req.Count = num
+					req.Count = uint32(num)
 				}
 			}
 		}

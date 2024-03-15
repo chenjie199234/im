@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/chenjie199234/im/api"
@@ -18,6 +19,7 @@ import (
 	// "github.com/chenjie199234/Corelib/log"
 	// "github.com/chenjie199234/Corelib/web"
 	"github.com/chenjie199234/Corelib/log"
+	"github.com/chenjie199234/Corelib/log/trace"
 	"github.com/chenjie199234/Corelib/metadata"
 	"github.com/chenjie199234/Corelib/stream"
 	"github.com/chenjie199234/Corelib/util/common"
@@ -46,7 +48,7 @@ func Start() *Service {
 		relationDao: relationDao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
 		rawname:     strconv.FormatInt(time.Now().UnixNano(), 10) + "_" + common.MakeRandCode(10),
 	}
-	s.stopunicast = s.ListenUnicast()
+	s.stopunicast = s.listenUnicast()
 	return s
 }
 
@@ -54,6 +56,12 @@ func (s *Service) SetRawTCP(raw *stream.Instance) {
 	s.rawInstance = raw
 }
 func (s *Service) Send(ctx context.Context, req *api.SendReq) (*api.SendResp, error) {
+	if e := s.stop.Add(1); e != nil {
+		if e == graceful.ErrClosing {
+			return nil, ecode.ErrServerClosing
+		}
+		return nil, ecode.ErrBusy
+	}
 	md := metadata.GetMetadata(ctx)
 	sender := md["Token-User"]
 	//check the relation in target's view
@@ -64,6 +72,7 @@ func (s *Service) Send(ctx context.Context, req *api.SendReq) (*api.SendResp, er
 				log.String("target", req.Target),
 				log.String("target_type", req.TargetType),
 				log.CError(e))
+			s.stop.DoneOne()
 			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 		}
 	} else if _, e := s.relationDao.GetGroupMember(ctx, req.Target, sender); e != nil {
@@ -72,6 +81,7 @@ func (s *Service) Send(ctx context.Context, req *api.SendReq) (*api.SendResp, er
 			log.String("target", req.Target),
 			log.String("target_type", req.TargetType),
 			log.CError(e))
+		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	chatkey := util.FormChatKey(sender, req.Target, req.TargetType)
@@ -83,15 +93,72 @@ func (s *Service) Send(ctx context.Context, req *api.SendReq) (*api.SendResp, er
 	}
 	if e := s.chatDao.MongoSend(ctx, msg); e != nil {
 		log.Error(ctx, "[Send] db op failed", log.String("sender", sender), log.String("chat_key", chatkey), log.CError(e))
+		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
-	//TODO push
+	//push
+	go func() {
+		s.pushsend(trace.CloneSpan(ctx), msg, req.Target, req.TargetType)
+		s.stop.DoneOne()
+	}()
 	return &api.SendResp{
 		MsgIndex:  msg.MsgIndex,
-		Timestamp: uint64(msg.ID.Timestamp().Unix()),
+		Timestamp: uint32(msg.ID.Timestamp().Unix()),
 	}, nil
 }
+func (s *Service) pushsend(ctx context.Context, msg *model.MsgInfo, target, targetType string) {
+	pushmsg := &PushMsg{
+		Type: "msg",
+		Content: &Msg{
+			Sender:    msg.Sender,
+			Msg:       msg.Msg,
+			Extra:     msg.Extra,
+			MsgIndex:  msg.MsgIndex,
+			Timestamp: uint32(msg.ID.Timestamp().Unix()),
+		},
+	}
+	single := func(userid string, wg *sync.WaitGroup) {
+		if userid != msg.Sender {
+			s.unicast(ctx, userid, pushmsg)
+		}
+		var e error
+		if userid == msg.Sender {
+			e = s.chatDao.RedisSetIndex(ctx, userid, msg.ChatKey, msg.MsgIndex, 0, msg.MsgIndex)
+		} else {
+			e = s.chatDao.RedisSetIndex(ctx, userid, msg.ChatKey, msg.MsgIndex, 0, 0)
+		}
+		if e != nil {
+			time.Sleep(time.Millisecond * 10)
+			if e = s.chatDao.RedisDelIndex(ctx, userid, msg.ChatKey); e != nil {
+				log.Error(ctx, "[PushSend] redis op failed", log.String("user_id", userid), log.String("chat_key", msg.ChatKey), log.CError(e))
+			}
+		}
+		wg.Done()
+	}
+	//TODO optimize goroutine
+	if targetType == "user" {
+		wg := &sync.WaitGroup{}
+		wg.Add(2)
+		go single(msg.Sender, wg)
+		go single(target, wg)
+	} else if members, e := s.relationDao.GetGroupMembers(ctx, target); e != nil {
+		log.Error(ctx, "[PushSend] get group members failed", log.String("group_id", target), log.CError(e))
+		return
+	} else {
+		wg := &sync.WaitGroup{}
+		wg.Add(len(members))
+		for _, member := range members {
+			go single(member.Target, wg)
+		}
+	}
+}
 func (s *Service) Recall(ctx context.Context, req *api.RecallReq) (*api.RecallResp, error) {
+	if e := s.stop.Add(1); e != nil {
+		if e == graceful.ErrClosing {
+			return nil, ecode.ErrServerClosing
+		}
+		return nil, ecode.ErrBusy
+	}
 	md := metadata.GetMetadata(ctx)
 	recaller := md["Token-User"]
 	//check the relation in self's view
@@ -101,16 +168,60 @@ func (s *Service) Recall(ctx context.Context, req *api.RecallReq) (*api.RecallRe
 			log.String("target", req.Target),
 			log.String("target_type", req.TargetType),
 			log.CError(e))
+		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	chatkey := util.FormChatKey(recaller, req.Target, req.TargetType)
 	recallindex, e := s.chatDao.MongoRecall(ctx, recaller, chatkey, req.MsgIndex)
 	if e != nil {
-		log.Error(ctx, "[Recall] db op failed", log.String("recaller", recaller), log.String("chat_key", chatkey), log.Uint64("msg_index", req.MsgIndex), log.CError(e))
+		log.Error(ctx, "[Recall] db op failed",
+			log.String("recaller", recaller),
+			log.String("chat_key", chatkey),
+			log.Uint64("msg_index", uint64(req.MsgIndex)),
+			log.CError(e))
+		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
-	//TODO push
+	//push
+	go func() {
+		s.pushrecall(trace.CloneSpan(ctx), recallindex, req.MsgIndex, chatkey, recaller, req.Target, req.TargetType)
+		s.stop.DoneOne()
+	}()
 	return &api.RecallResp{RecallIndex: recallindex}, nil
+}
+func (s *Service) pushrecall(ctx context.Context, recallindex, msgindex uint32, chatkey, recaller, target, targetType string) {
+	pushmsg := &PushMsg{
+		Type:    "recall",
+		Content: &Recall{MsgIndex: msgindex, RecallIndex: recallindex},
+	}
+	single := func(userid string, wg *sync.WaitGroup) {
+		if userid != recaller {
+			s.unicast(ctx, userid, pushmsg)
+		}
+		if e := s.chatDao.RedisSetIndex(ctx, userid, chatkey, 0, recallindex, 0); e != nil {
+			time.Sleep(time.Millisecond * 10)
+			if e = s.chatDao.RedisDelIndex(ctx, userid, chatkey); e != nil {
+				log.Error(ctx, "[PushRecall] redis op failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
+			}
+		}
+		wg.Done()
+	}
+	//TODO optimize goroutine
+	if targetType == "user" {
+		wg := &sync.WaitGroup{}
+		wg.Add(2)
+		go single(recaller, wg)
+		go single(target, wg)
+	} else if members, e := s.relationDao.GetGroupMembers(ctx, target); e != nil {
+		log.Error(ctx, "[PushRecall] get group members failed", log.String("group_id", target), log.CError(e))
+		return
+	} else {
+		wg := &sync.WaitGroup{}
+		wg.Add(len(members))
+		for _, member := range members {
+			go single(member.Target, wg)
+		}
+	}
 }
 func (s *Service) Ack(ctx context.Context, req *api.AckReq) (*api.AckResp, error) {
 	md := metadata.GetMetadata(ctx)
@@ -140,7 +251,11 @@ func (s *Service) Ack(ctx context.Context, req *api.AckReq) (*api.AckResp, error
 		return &api.AckResp{}, nil
 	}
 	if e := s.chatDao.MongoAck(ctx, acker, chatkey, req.MsgIndex); e != nil {
-		log.Error(ctx, "[Ack] db op failed", log.String("acker", acker), log.String("chat_key", chatkey), log.Uint64("msg_index", req.MsgIndex), log.CError(e))
+		log.Error(ctx, "[Ack] db op failed",
+			log.String("acker", acker),
+			log.String("chat_key", chatkey),
+			log.Uint64("msg_index", uint64(req.MsgIndex)),
+			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	//TODO push if need
@@ -167,7 +282,7 @@ func (s *Service) Pull(ctx context.Context, req *api.PullReq) (*api.PullResp, er
 				RecallIndex: msg.RecallIndex,
 				Msg:         msg.Msg,
 				Extra:       msg.Extra,
-				Timestamp:   uint64(msg.ID.Timestamp().Unix()),
+				Timestamp:   uint32(msg.ID.Timestamp().Unix()),
 				Sender:      msg.Sender,
 			})
 		}

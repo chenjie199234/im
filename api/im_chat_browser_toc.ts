@@ -12,8 +12,8 @@ export interface LogicError{
 export class AckReq{
 	target: string = ''
 	target_type: string = ''
-	//Warning!!!Type is uint64,be careful of sign(+)
-	msg_index: bigint = BigInt(0)
+	//Warning!!!Type is uint32,be careful of sign(+) and overflow
+	msg_index: number = 0
 	toJSON(){
 		let tmp = {}
 		if(this.target){
@@ -23,7 +23,7 @@ export class AckReq{
 			tmp["target_type"]=this.target_type
 		}
 		if(this.msg_index){
-			tmp["msg_index"]=this.msg_index.toString()
+			tmp["msg_index"]=this.msg_index
 		}
 		return tmp
 	}
@@ -34,24 +34,24 @@ export class AckResp{
 }
 export class MsgInfo{
 	//msg index start from 1
-	//Warning!!!Type is uint64,be careful of sign(+)
-	msg_index: bigint = BigInt(0)
+	//Warning!!!Type is uint32,be careful of sign(+) and overflow
+	msg_index: number = 0
 	//recall index start 1,0 means didn't recall
-	//Warning!!!Type is uint64,be careful of sign(+)
-	recall_index: bigint = BigInt(0)
+	//Warning!!!Type is uint32,be careful of sign(+) and overflow
+	recall_index: number = 0
 	msg: string = ''
 	extra: string = ''
-	//Warning!!!Type is uint64,be careful of sign(+)
-	timestamp: bigint = BigInt(0)
+	//Warning!!!Type is uint32,be careful of sign(+) and overflow
+	timestamp: number = 0
 	sender: string = ''
 	target: string = ''
 	target_type: string = ''
 	fromOBJ(obj:Object){
 		if(obj["msg_index"]){
-			this.msg_index=BigInt(obj["msg_index"])
+			this.msg_index=obj["msg_index"]
 		}
 		if(obj["recall_index"]){
-			this.recall_index=BigInt(obj["recall_index"])
+			this.recall_index=obj["recall_index"]
 		}
 		if(obj["msg"]){
 			this.msg=obj["msg"]
@@ -60,7 +60,7 @@ export class MsgInfo{
 			this.extra=obj["extra"]
 		}
 		if(obj["timestamp"]){
-			this.timestamp=BigInt(obj["timestamp"])
+			this.timestamp=obj["timestamp"]
 		}
 		if(obj["sender"]){
 			this.sender=obj["sender"]
@@ -78,12 +78,12 @@ export class PullReq{
 	target_type: string = ''
 	direction: string = ''
 	//the response will include this index
-	//Warning!!!Type is uint64,be careful of sign(+)
-	start_msg_index: bigint = BigInt(0)//if this is 0,means don't need to pull the msgs
-	//Warning!!!Type is uint64,be careful of sign(+)
-	start_recall_index: bigint = BigInt(0)//if this is 0,means don't need to pull the recalls
-	//Warning!!!Type is uint64,be careful of sign(+)
-	count: bigint = BigInt(0)
+	//Warning!!!Type is uint32,be careful of sign(+) and overflow
+	start_msg_index: number = 0//if this is 0,means don't need to pull the msgs
+	//Warning!!!Type is uint32,be careful of sign(+) and overflow
+	start_recall_index: number = 0//if this is 0,means don't need to pull the recalls
+	//Warning!!!Type is uint32,be careful of sign(+) and overflow
+	count: number = 0
 	toJSON(){
 		let tmp = {}
 		if(this.target){
@@ -96,22 +96,22 @@ export class PullReq{
 			tmp["direction"]=this.direction
 		}
 		if(this.start_msg_index){
-			tmp["start_msg_index"]=this.start_msg_index.toString()
+			tmp["start_msg_index"]=this.start_msg_index
 		}
 		if(this.start_recall_index){
-			tmp["start_recall_index"]=this.start_recall_index.toString()
+			tmp["start_recall_index"]=this.start_recall_index
 		}
 		if(this.count){
-			tmp["count"]=this.count.toString()
+			tmp["count"]=this.count
 		}
 		return tmp
 	}
 }
 export class PullResp{
 	msgs: Array<MsgInfo|null>|null = null
-	//Warning!!!map's key's type is uint64,be carefule of sign(+)
-	//Warning!!!map's value's type is uint64,be careful of sign(+)
-	recalls: Map<bigint,bigint>|null = null
+	//Warning!!!map's key's type is uint32,be careful of sign(+) and overflow
+	//Warning!!!map's value's type is uint32,be careful of sign(+) and overflow
+	recalls: Map<number,number>|null = null
 	fromOBJ(obj:Object){
 		if(obj["msgs"] && obj["msgs"].length>0){
 			this.msgs=new Array<MsgInfo|null>()
@@ -126,9 +126,9 @@ export class PullResp{
 			}
 		}
 		if(obj["recalls"] && Object.keys(obj["recalls"]).length>0){
-			this.recalls=new Map<bigint,bigint>()
+			this.recalls=new Map<number,number>()
 			for(let key of Object.keys(obj["recalls"])){
-				this.recalls.set(BigInt(key),BigInt(obj["recalls"][key]))
+				this.recalls.set(Number(key),obj["recalls"][key])
 			}
 		}
 	}
@@ -136,8 +136,8 @@ export class PullResp{
 export class RecallReq{
 	target: string = ''
 	target_type: string = ''
-	//Warning!!!Type is uint64,be careful of sign(+)
-	msg_index: bigint = BigInt(0)
+	//Warning!!!Type is uint32,be careful of sign(+) and overflow
+	msg_index: number = 0
 	toJSON(){
 		let tmp = {}
 		if(this.target){
@@ -147,17 +147,17 @@ export class RecallReq{
 			tmp["target_type"]=this.target_type
 		}
 		if(this.msg_index){
-			tmp["msg_index"]=this.msg_index.toString()
+			tmp["msg_index"]=this.msg_index
 		}
 		return tmp
 	}
 }
 export class RecallResp{
-	//Warning!!!Type is uint64,be careful of sign(+)
-	recall_index: bigint = BigInt(0)
+	//Warning!!!Type is uint32,be careful of sign(+) and overflow
+	recall_index: number = 0
 	fromOBJ(obj:Object){
 		if(obj["recall_index"]){
-			this.recall_index=BigInt(obj["recall_index"])
+			this.recall_index=obj["recall_index"]
 		}
 	}
 }
@@ -185,17 +185,17 @@ export class SendReq{
 }
 export class SendResp{
 	//msg index start from 1
-	//Warning!!!Type is uint64,be careful of sign(+)
-	msg_index: bigint = BigInt(0)
+	//Warning!!!Type is uint32,be careful of sign(+) and overflow
+	msg_index: number = 0
 	//unit: nanosecond
-	//Warning!!!Type is uint64,be careful of sign(+)
-	timestamp: bigint = BigInt(0)
+	//Warning!!!Type is uint32,be careful of sign(+) and overflow
+	timestamp: number = 0
 	fromOBJ(obj:Object){
 		if(obj["msg_index"]){
-			this.msg_index=BigInt(obj["msg_index"])
+			this.msg_index=obj["msg_index"]
 		}
 		if(obj["timestamp"]){
-			this.timestamp=BigInt(obj["timestamp"])
+			this.timestamp=obj["timestamp"]
 		}
 	}
 }
