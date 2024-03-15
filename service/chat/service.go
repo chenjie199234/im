@@ -33,17 +33,21 @@ type Service struct {
 
 	rawname     string
 	rawInstance *stream.Instance
+
+	stopunicast func()
 }
 
 // Start -
 func Start() *Service {
-	return &Service{
+	s := &Service{
 		stop: graceful.New(),
 
 		chatDao:     chatdao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
 		relationDao: relationDao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
 		rawname:     strconv.FormatInt(time.Now().UnixNano(), 10) + "_" + common.MakeRandCode(10),
 	}
+	s.stopunicast = s.ListenUnicast()
+	return s
 }
 
 func (s *Service) SetRawTCP(raw *stream.Instance) {
@@ -181,5 +185,6 @@ func (s *Service) Pull(ctx context.Context, req *api.PullReq) (*api.PullResp, er
 
 // Stop -
 func (s *Service) Stop() {
+	s.stopunicast()
 	s.stop.Close(nil, nil)
 }
