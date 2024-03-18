@@ -8,6 +8,7 @@ import (
 	"github.com/chenjie199234/im/model"
 
 	"github.com/chenjie199234/Corelib/log"
+	"github.com/chenjie199234/Corelib/log/trace"
 	cmongo "github.com/chenjie199234/Corelib/mongo"
 	cmysql "github.com/chenjie199234/Corelib/mysql"
 	credis "github.com/chenjie199234/Corelib/redis"
@@ -208,7 +209,7 @@ func (d *Dao) GetUserName(ctx context.Context, userid string) (string, error) {
 			//if the error is ErrUserNotExist,set the empty value in redis below
 		}
 		go func() {
-			if e := d.RedisSetUserRelations(ctx, userid, relations); e != nil {
+			if e := d.RedisSetUserRelations(trace.CloneSpan(ctx), userid, relations); e != nil {
 				log.Error(ctx, "[dao.GetUserName] update redis failed", log.String("user_id", userid), log.CError(e))
 			}
 		}()
@@ -244,7 +245,7 @@ func (d *Dao) GetUserRelations(ctx context.Context, userid string) ([]*model.Rel
 			//if the error is ErrUserNotExist,set the empty value in redis below
 		}
 		go func() {
-			if e := d.RedisSetUserRelations(ctx, userid, relations); e != nil {
+			if e := d.RedisSetUserRelations(trace.CloneSpan(ctx), userid, relations); e != nil {
 				log.Error(ctx, "[dao.GetUserRelations] update redis failed", log.String("user_id", userid), log.CError(e))
 			}
 		}()
@@ -272,7 +273,7 @@ func (d *Dao) CountUserRelations(ctx context.Context, userid, exceptTarget, exce
 			//if the error is ErrUserNotExist,set the empty value in redis below
 		}
 		go func() {
-			if e := d.RedisSetUserRelations(ctx, userid, relations); e != nil {
+			if e := d.RedisSetUserRelations(trace.CloneSpan(ctx), userid, relations); e != nil {
 				log.Error(ctx, "[dao.CountUserRelations] update redis failed", log.String("user_id", userid), log.CError(e))
 			}
 		}()
@@ -315,7 +316,7 @@ func (d *Dao) GetUserRelation(ctx context.Context, userid, target, targetType st
 			//if the error is ErrUserNotExist,set the empty value in redis below
 		}
 		go func() {
-			if e := d.RedisSetUserRelations(ctx, userid, relations); e != nil {
+			if e := d.RedisSetUserRelations(trace.CloneSpan(ctx), userid, relations); e != nil {
 				log.Error(ctx, "[dao.GetUserRelation] update redis failed", log.String("user_id", userid), log.CError(e))
 			}
 		}()
@@ -440,7 +441,7 @@ func (d *Dao) GetGroupName(ctx context.Context, groupid string) (string, error) 
 			//if the error is ErrGroupNotExist,set the empty value in redis below
 		}
 		go func() {
-			if e := d.RedisSetGroupMembers(ctx, groupid, members); e != nil {
+			if e := d.RedisSetGroupMembers(trace.CloneSpan(ctx), groupid, members); e != nil {
 				log.Error(ctx, "[dao.GetGroupName] update redis failed", log.String("group_id", groupid), log.CError(e))
 			}
 		}()
@@ -475,7 +476,7 @@ func (d *Dao) GetGroupMembers(ctx context.Context, groupid string) ([]*model.Rel
 			//if the error is ErrGroupNotExist,set the empty value in redis below
 		}
 		go func() {
-			if e := d.RedisSetGroupMembers(ctx, groupid, members); e != nil {
+			if e := d.RedisSetGroupMembers(trace.CloneSpan(ctx), groupid, members); e != nil {
 				log.Error(ctx, "[dao.GetGroupMembers] update redis failed", log.String("group_id", groupid), log.CError(e))
 			}
 		}()
@@ -503,7 +504,7 @@ func (d *Dao) CountGroupMembers(ctx context.Context, groupid, exceptMember strin
 			//if the error is ErrGroupNotExist,set the empty value in redis below
 		}
 		go func() {
-			if e := d.RedisSetGroupMembers(ctx, groupid, members); e != nil {
+			if e := d.RedisSetGroupMembers(trace.CloneSpan(ctx), groupid, members); e != nil {
 				log.Error(ctx, "[dao.CountGroupMembers] update redis failed", log.String("group_id", groupid), log.CError(e))
 			}
 		}()
@@ -539,7 +540,7 @@ func (d *Dao) GetGroupMember(ctx context.Context, groupid, userid string) (*mode
 			//if the error is ErrGroupNotExist,set the empty value in redis below
 		}
 		go func() {
-			if e := d.RedisSetGroupMembers(ctx, groupid, members); e != nil {
+			if e := d.RedisSetGroupMembers(trace.CloneSpan(ctx), groupid, members); e != nil {
 				log.Error(ctx, "[dao.GetGroupMember] update redis failed", log.String("group_id", groupid), log.CError(e))
 			}
 		}()

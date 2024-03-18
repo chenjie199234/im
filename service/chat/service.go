@@ -248,8 +248,8 @@ func (s *Service) Ack(ctx context.Context, req *api.AckReq) (*api.AckResp, error
 		//already acked
 		return &api.AckResp{}, nil
 	}
-	if e := s.chatDao.MongoAck(ctx, acker, chatkey, req.MsgIndex); e != nil {
-		log.Error(ctx, "[Ack] db op failed",
+	if e := s.chatDao.Ack(ctx, acker, chatkey, req.MsgIndex); e != nil {
+		log.Error(ctx, "[Ack] dao op failed",
 			log.String("acker", acker),
 			log.String("chat_key", chatkey),
 			log.Uint64("msg_index", uint64(req.MsgIndex)),

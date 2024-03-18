@@ -120,7 +120,8 @@ func (d *Dao) MongoSend(ctx context.Context, msg *model.MsgInfo) error {
 		} else {
 			msg.ID = r.InsertedID.(primitive.ObjectID)
 		}
-		return d.MongoAck(ctx, msg.Sender, msg.ChatKey, msg.MsgIndex)
+		_, e := d.MongoAck(ctx, msg.Sender, msg.ChatKey, msg.MsgIndex)
+		return e
 	}
 }
 func (d *Dao) MongoRecall(ctx context.Context, sender, chatkey string, msgindex uint32) (recallindex uint32, e error) {
@@ -172,9 +173,13 @@ func (d *Dao) MongoGetAck(ctx context.Context, acker, chatkey string) (uint32, e
 		return ack.ReadMsgIndex, nil
 	}
 }
-func (d *Dao) MongoAck(ctx context.Context, acker string, chatkey string, msgindex uint32) error {
+func (d *Dao) MongoAck(ctx context.Context, acker string, chatkey string, msgindex uint32) (uint32, error) {
 	filter := bson.M{"chat_key": chatkey, "acker": acker}
 	updater := bson.M{"$max": bson.M{"read_msg_index": msgindex}}
-	_, e := d.mongo.Database("im").Collection("ack").UpdateOne(ctx, filter, updater, options.Update().SetUpsert(true))
-	return e
+	opts := options.FindOneAndUpdate().SetUpsert(true).SetReturnDocument(options.After)
+	r := model.Ack{}
+	if e := d.mongo.Database("im").Collection("ack").FindOneAndUpdate(ctx, filter, updater, opts).Decode(r); e != nil {
+		return 0, e
+	}
+	return r.ReadMsgIndex, nil
 }
