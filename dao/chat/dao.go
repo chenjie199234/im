@@ -16,19 +16,20 @@ import (
 
 // Dao this is a data operation layer to operate chat service's data
 type Dao struct {
-	mysql *cmysql.Client
-	redis *credis.Client
-	mongo *cmongo.Client
+	mysql              *cmysql.Client
+	imredis, gateredis *credis.Client
+	mongo              *cmongo.Client
 }
 
 // NewDao Dao is only a data operation layer
 // don't write business logic in this package
 // business logic should be written in service package
-func NewDao(mysql *cmysql.Client, redis *credis.Client, mongo *cmongo.Client) *Dao {
+func NewDao(mysql *cmysql.Client, imredis, gateredis *credis.Client, mongo *cmongo.Client) *Dao {
 	return &Dao{
-		mysql: mysql,
-		redis: redis,
-		mongo: mongo,
+		mysql:     mysql,
+		imredis:   imredis,
+		gateredis: gateredis,
+		mongo:     mongo,
 	}
 }
 func (d *Dao) GetIndex(ctx context.Context, userid, chatkey string) (*model.IMIndex, error) {

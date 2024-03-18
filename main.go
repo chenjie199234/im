@@ -13,6 +13,7 @@ import (
 	"github.com/chenjie199234/im/server/xraw"
 	"github.com/chenjie199234/im/server/xweb"
 	"github.com/chenjie199234/im/service"
+	"github.com/chenjie199234/im/util"
 
 	"github.com/chenjie199234/Corelib/log"
 	publicmids "github.com/chenjie199234/Corelib/mids"
@@ -49,6 +50,7 @@ func main() {
 	} else {
 		log.Warn(nil, "[main] session redis missing,all session event will be failed")
 	}
+	util.Init()
 	//start the whole business service
 	if e := service.StartService(); e != nil {
 		log.Error(nil, "[main] start service failed", log.CError(e))

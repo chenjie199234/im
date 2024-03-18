@@ -5,19 +5,16 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chenjie199234/im/config"
 	"github.com/chenjie199234/im/ecode"
 	"github.com/chenjie199234/im/model"
 
+	"github.com/chenjie199234/Corelib/util/common"
 	gredis "github.com/redis/go-redis/v9"
 )
 
 const defaultExpire = 604800
 
 var setindex *gredis.Script
-var setsession *gredis.Script
-var updatesession *gredis.Script
-var delsession *gredis.Script
 
 func init() {
 	setindex = gredis.NewScript(`local num=0
@@ -35,23 +32,6 @@ for i=2,#ARGV,2 do
 end
 redis.call("EXPIRE",KEYS[1],ARGV[1])
 return num`)
-
-	setsession = gredis.NewScript(`redis.call("DEL",KEYS[1])
-local num=redis.call("HSET",KEYS[1],unpack(ARGV,2))
-redis.call("EXPIRE",KEYS[1],ARGV[1])
-return num`)
-	updatesession = gredis.NewScript(`local tmp=redis.call("HGET",KEYS[1],"remote_addr")
-if(not tmp or tmp~=ARGV[2]) then
-	return nil
-end
-redis.call("HSET",KEYS[1],unpack(ARGV,3))
-redis.call("EXPIRE",KEYS[1],ARGV[1])
-return 0`)
-	delsession = gredis.NewScript(`local tmp=redis.call("HGET",KEYS[1],"remote_addr")
-if(tmp and tmp==ARGV[1]) then
-	return redis.call("DEL",KEYS[1])
-end
-return 0`)
 }
 
 //------------------------------------index-----------------------------------
@@ -79,7 +59,7 @@ func (d *Dao) RedisSetIndex(ctx context.Context, userid, chatkey string, MsgInde
 	if AckIndex != 0 {
 		args = append(args, field4, AckIndex)
 	}
-	return setindex.Run(ctx, d.redis, []string{key}, args...).Err()
+	return setindex.Run(ctx, d.imredis, []string{key}, args...).Err()
 }
 
 // return MsgIndex,RecallIndex,AckIndex
@@ -89,7 +69,7 @@ func (d *Dao) RedisGetIndex(ctx context.Context, userid, chatkey string) (*model
 	field2 := chatkey + "_msg"
 	field3 := chatkey + "_recall"
 	field4 := chatkey + "_ack"
-	rs, e := d.redis.HMGet(ctx, key, field1, field2, field3, field4).Result()
+	rs, e := d.imredis.HMGet(ctx, key, field1, field2, field3, field4).Result()
 	if e != nil {
 		return nil, e
 	}
@@ -118,7 +98,7 @@ func (d *Dao) RedisGetIndex(ctx context.Context, userid, chatkey string) (*model
 // return: key:chatkey,value:index
 func (d *Dao) RedisGetIndexAll(ctx context.Context, userid string) (map[string]*model.IMIndex, error) {
 	key := "im_user_{" + userid + "}"
-	tmp, e := d.redis.HGetAll(ctx, key).Result()
+	tmp, e := d.imredis.HGetAll(ctx, key).Result()
 	if e != nil {
 		return nil, e
 	}
@@ -173,34 +153,13 @@ func (d *Dao) RedisDelIndex(ctx context.Context, userid, chatkey string) error {
 	field2 := chatkey + "_msg"
 	field3 := chatkey + "_recall"
 	field4 := chatkey + "_ack"
-	return d.redis.HDel(ctx, key, field1, field2, field3, field4).Err()
+	return d.imredis.HDel(ctx, key, field1, field2, field3, field4).Err()
 }
 
-// ------------------------------------raw-----------------------------------
-func (d *Dao) RedisSetSession(ctx context.Context, userid, remoteaddr, realip, gate string) error {
-	expire := uint64(config.GetRawServerConfig().HeartProbe.StdDuration().Seconds()) * 3
+// -------------------------------------------gate redis-------------------------------------
+func (d *Dao) GetSession(ctx context.Context, userid string) (*model.IMSession, error) {
 	key := "raw_user_{" + userid + "}"
-	return setsession.Run(ctx, d.redis, []string{key}, expire, "remote_addr", remoteaddr, "real_ip", realip, "gate", gate, "netlag", 0).Err()
-}
-
-func (d *Dao) RedisUpdateSession(ctx context.Context, userid, remoteaddr string, netlag int64) error {
-	expire := uint64(config.GetRawServerConfig().HeartProbe.StdDuration().Seconds()) * 3
-	key := "raw_user_{" + userid + "}"
-	e := updatesession.Run(ctx, d.redis, []string{key}, expire, remoteaddr, "netlag", netlag).Err()
-	if e == gredis.Nil {
-		e = ecode.ErrSession
-	}
-	return e
-}
-
-func (d *Dao) RedisDelSession(ctx context.Context, userid, remoteaddr string) error {
-	key := "raw_user_{" + userid + "}"
-	return delsession.Run(ctx, d.redis, []string{key}, remoteaddr).Err()
-}
-
-func (d *Dao) RedisGetSession(ctx context.Context, userid string) (*model.IMSession, error) {
-	key := "raw_user_{" + userid + "}"
-	rs, e := d.redis.HGetAll(ctx, key).Result()
+	rs, e := d.gateredis.HGetAll(ctx, key).Result()
 	if e == gredis.Nil {
 		e = ecode.ErrSession
 	}
@@ -228,4 +187,7 @@ func (d *Dao) RedisGetSession(ctx context.Context, userid string) (*model.IMSess
 		return nil, ecode.ErrCacheDataBroken
 	}
 	return &model.IMSession{RemoteAddr: remoteaddr, RealIP: realip, Gate: gate, Netlag: netlag}, nil
+}
+func (d *Dao) Unicast(ctx context.Context, rawname, userid string, data []byte) error {
+	return d.gateredis.PubUnicast(ctx, rawname, 32, userid, userid+"_"+common.BTS(data))
 }

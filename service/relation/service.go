@@ -35,7 +35,7 @@ func Start() *Service {
 	return &Service{
 		stop: graceful.New(),
 
-		relationDao: relationdao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
+		relationDao: relationdao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetRedis("gate_redis"), config.GetMongo("im_mongo")),
 	}
 }
 func (s *Service) MakeFriend(ctx context.Context, req *api.MakeFriendReq) (*api.MakeFriendResp, error) {

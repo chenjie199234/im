@@ -21,16 +21,17 @@ import (
 
 // sourceConfig can't hot update
 type sourceConfig struct {
-	RawServer   *RawServerConfig        `json:"raw_server"`
-	CGrpcServer *CGrpcServerConfig      `json:"cgrpc_server"`
-	CGrpcClient *CGrpcClientConfig      `json:"cgrpc_client"`
-	CrpcServer  *CrpcServerConfig       `json:"crpc_server"`
-	CrpcClient  *CrpcClientConfig       `json:"crpc_client"`
-	WebServer   *WebServerConfig        `json:"web_server"`
-	WebClient   *WebClientConfig        `json:"web_client"`
-	Mongo       map[string]*MongoConfig `json:"mongo"` //key example:xx_mongo
-	Mysql       map[string]*MysqlConfig `json:"mysql"` //key example:xx_mysql
-	Redis       map[string]*RedisConfig `json:"redis"` //key example:xx_redis
+	UnicastWorker uint16                  `json:"unicast_worker"`
+	RawServer     *RawServerConfig        `json:"raw_server"`
+	CGrpcServer   *CGrpcServerConfig      `json:"cgrpc_server"`
+	CGrpcClient   *CGrpcClientConfig      `json:"cgrpc_client"`
+	CrpcServer    *CrpcServerConfig       `json:"crpc_server"`
+	CrpcClient    *CrpcClientConfig       `json:"crpc_client"`
+	WebServer     *WebServerConfig        `json:"web_server"`
+	WebClient     *WebClientConfig        `json:"web_client"`
+	Mongo         map[string]*MongoConfig `json:"mongo"` //key example:xx_mongo
+	Mysql         map[string]*MysqlConfig `json:"mysql"` //key example:xx_mysql
+	Redis         map[string]*RedisConfig `json:"redis"` //key example:xx_redis
 }
 
 type RawServerConfig struct {
@@ -148,6 +149,11 @@ func initsource() {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
+		initrawserver()
+		wg.Done()
+	}()
+	wg.Add(1)
+	go func() {
 		initgrpcserver()
 		wg.Done()
 	}()
@@ -192,6 +198,25 @@ func initsource() {
 		wg.Done()
 	}()
 	wg.Wait()
+}
+func initrawserver() {
+	if sc.RawServer == nil {
+		sc.RawServer = &RawServerConfig{
+			GroupNum:       100,
+			ConnectTimeout: ctime.Duration(time.Millisecond * 500),
+			HeartProbe:     ctime.Duration(time.Minute),
+		}
+	} else {
+		if sc.RawServer.GroupNum == 0 {
+			sc.RawServer.GroupNum = 100
+		}
+		if sc.RawServer.ConnectTimeout <= 0 {
+			sc.RawServer.ConnectTimeout = ctime.Duration(time.Millisecond * 500)
+		}
+		if sc.RawServer.HeartProbe <= 0 {
+			sc.RawServer.HeartProbe = ctime.Duration(time.Minute)
+		}
+	}
 }
 func initgrpcserver() {
 	if sc.CGrpcServer == nil {
@@ -531,6 +556,10 @@ func initmysql() {
 		}()
 	}
 	wg.Wait()
+}
+
+func GetUnicastWorker() uint16 {
+	return sc.UnicastWorker
 }
 
 // GetRawServerConfig get the raw net config

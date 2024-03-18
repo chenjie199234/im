@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 
 	"github.com/chenjie199234/im/config"
-	"github.com/chenjie199234/im/service"
+	"github.com/chenjie199234/im/util"
 
 	"github.com/chenjie199234/Corelib/log"
 	"github.com/chenjie199234/Corelib/stream"
@@ -20,7 +20,7 @@ func StartRawServer() {
 		for cert, key := range c.Certs {
 			temp, e := tls.LoadX509KeyPair(cert, key)
 			if e != nil {
-				log.Error(nil, "[xrawchat] load cert failed:", log.String("cert", cert), log.String("key", key), log.CError(e))
+				log.Error(nil, "[xraw] load cert failed:", log.String("cert", cert), log.String("key", key), log.CError(e))
 				return
 			}
 			certificates = append(certificates, temp)
@@ -31,20 +31,20 @@ func StartRawServer() {
 		TcpC:               &stream.TcpConfig{ConnectTimeout: c.ConnectTimeout.StdDuration()},
 		HeartprobeInterval: c.HeartProbe.StdDuration(),
 		GroupNum:           c.GroupNum,
-		VerifyFunc:         service.SvcChat.RawVerify,
-		OnlineFunc:         service.SvcChat.RawOnline,
-		PingPongFunc:       service.SvcChat.RawPingPong,
-		UserdataFunc:       service.SvcChat.RawUser,
-		OfflineFunc:        service.SvcChat.RawOffline,
+		VerifyFunc:         util.RawVerify,
+		OnlineFunc:         util.RawOnline,
+		PingPongFunc:       util.RawPingPong,
+		UserdataFunc:       util.RawUser,
+		OfflineFunc:        util.RawOffline,
 	})
 
-	service.SvcChat.SetRawTCP(s)
+	util.SetRawInstance(s)
 
 	if e := s.StartServer(":8080", tlsc); e != nil && e != stream.ErrServerClosed {
-		log.Error(nil, "[xrawchat] start server failed", log.CError(e))
+		log.Error(nil, "[xraw] start server failed", log.CError(e))
 		return
 	}
-	log.Info(nil, "[xrawchat] server closed")
+	log.Info(nil, "[xraw] server closed")
 }
 
 func StopRawServer() {
