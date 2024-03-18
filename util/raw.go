@@ -10,7 +10,6 @@ import (
 	"github.com/chenjie199234/im/config"
 	"github.com/chenjie199234/im/ecode"
 
-	"github.com/chenjie199234/Corelib/container/list"
 	"github.com/chenjie199234/Corelib/log"
 	"github.com/chenjie199234/Corelib/mids"
 	"github.com/chenjie199234/Corelib/stream"
@@ -70,23 +69,21 @@ func SetRawInstance(rawinstance *stream.Instance) {
 		}
 		receiver := common.BTS(data[:24])
 		if p := rawInstance.GetPeer(receiver); p != nil {
-			bl := (*list.BlockList[[]byte])(p.GetData())
-			//push will only return error when the block list is closed
-			if count, e := bl.Push(data[25:]); e == nil {
-				if count > 512 {
-					log.Error(nil, "[ListenUnicast] too many stacking msgs need to send",
-						log.String("user_id", p.GetUniqueID()),
-						log.String("remote_addr", p.GetRemoteAddr()),
-						log.String("real_ip", p.GetRealPeerIP()),
-						log.Int64("stack", count))
-					p.Close(false)
-				} else if count > 128 {
+			writer := *(*chan []byte)(p.GetData())
+			select {
+			case writer <- data[25:]:
+				if len(writer) > 128 {
 					log.Warn(nil, "[ListenUnicast] too many stacking msgs need to send",
 						log.String("user_id", p.GetUniqueID()),
 						log.String("remote_addr", p.GetRemoteAddr()),
-						log.String("real_ip", p.GetRealPeerIP()),
-						log.Int64("stack", count))
+						log.String("real_ip", p.GetRealPeerIP()))
 				}
+			default:
+				log.Error(nil, "[ListenUnicast] too many stacking msgs need to send",
+					log.String("user_id", p.GetUniqueID()),
+					log.String("remote_addr", p.GetRemoteAddr()),
+					log.String("real_ip", p.GetRealPeerIP()))
+				p.Close(false)
 			}
 		}
 	})
@@ -125,13 +122,13 @@ func RawOnline(p *stream.Peer) (success bool) {
 			log.CError(e))
 		return false
 	}
-	bl := list.NewBlockList[[]byte]()
-	p.SetData(unsafe.Pointer(bl))
+	w := make(chan []byte, 512)
+	p.SetData(unsafe.Pointer(&w))
 	go func() {
-		//writer
+		//writer goroutine
 		for {
-			data, ok := bl.Pop()
-			if !ok {
+			data := <-w
+			if len(data) == 0 {
 				//offline
 				return
 			}
@@ -171,8 +168,12 @@ func RawUser(p *stream.Peer, userdata []byte) {
 	p.Close(false)
 }
 func RawOffline(p *stream.Peer) {
-	bl := (*list.BlockList[[]byte])(p.GetData())
-	bl.Close()
+	w := *(*chan []byte)(p.GetData())
+	//wake up the writer goroutine
+	select {
+	case w <- nil:
+	default:
+	}
 	key := "raw_user_{" + p.GetUniqueID() + "}"
 	if e := delsession.Run(p, rdb, []string{key}, p.GetRemoteAddr()).Err(); e != nil {
 		log.Error(p, "[RawOffline] redis op failed",

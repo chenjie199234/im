@@ -619,6 +619,11 @@ func (d *Dao) GetSession(ctx context.Context, userid string) (*model.IMSession, 
 	}
 	return &model.IMSession{RemoteAddr: remoteaddr, RealIP: realip, Gate: gate, Netlag: netlag}, nil
 }
+
+// data can't be nil or empty
 func (d *Dao) Unicast(ctx context.Context, rawname, userid string, data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
 	return d.gateredis.PubUnicast(ctx, rawname, 32, userid, userid+"_"+common.BTS(data))
 }
