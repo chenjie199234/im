@@ -22,6 +22,14 @@ service relation{
 	//	option (pbex.cgrpc_midwares)="a";//this function on grpc protocol has 3 midwares,it's order is b,c,a
 	//}
 
+	rpc update_self_name(update_self_name_req)returns(update_self_name_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
+	rpc update_group_name(update_group_name_req)returns(update_group_name_resp){
+		option (pbex.method)="post";
+		option (pbex.web_midwares)="token";
+	}
 	// user a -> request -> user b(wait user b to do action:accept or refuse)
 	rpc make_friend(make_friend_req)returns(make_friend_resp){
 		option (pbex.method)="post";
@@ -119,6 +127,18 @@ service relation{
 	//int64 example_resp=1;
 //}
 
+message update_self_name_req{
+	string new_name=1[(pbex.string_bytes_len_gt)=0,(pbex.string_bytes_len_lte)=64];
+}
+message update_self_name_resp{
+}
+message update_group_name_req{
+	string group_id=1[(pbex.string_bytes_len_eq)=24];
+	string new_name=2[(pbex.string_bytes_len_gt)=0,(pbex.string_bytes_len_lte)=64];
+}
+message update_group_name_resp{
+
+}
 message make_friend_req{
 	string user_id=1[(pbex.string_bytes_len_eq)=24];
 }
@@ -211,16 +231,15 @@ message group_members_resp{
 	repeated relation_info members=2;//if the current_hash is same,this field is empty
 }
 message update_user_relation_name_req{
-	//if target_type == "user" && (target) == (userid in token) means update self's name
 	string target=1[(pbex.string_bytes_len_eq)=24];
 	string target_type=2[(pbex.string_bytes_in)="user",(pbex.string_bytes_in)="group"];
-	string new_name=3[(pbex.string_bytes_len_gt)=0];
+	string new_name=3[(pbex.string_bytes_len_gt)=0,(pbex.string_bytes_len_lte)=64];
 }
 message update_user_relation_name_resp{
 }
 message update_name_in_group_req{
 	string group_id=1[(pbex.string_bytes_len_eq)=24];
-	string new_name=2[(pbex.string_bytes_len_gt)=0];
+	string new_name=2[(pbex.string_bytes_len_gt)=0,(pbex.string_bytes_len_lte)=64];
 }
 message update_name_in_group_resp{
 }

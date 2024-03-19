@@ -430,6 +430,24 @@ export class UpdateDutyInGroupResp{
 	fromOBJ(_obj:Object){
 	}
 }
+export class UpdateGroupNameReq{
+	group_id: string = ''
+	new_name: string = ''
+	toJSON(){
+		let tmp = {}
+		if(this.group_id){
+			tmp["group_id"]=this.group_id
+		}
+		if(this.new_name){
+			tmp["new_name"]=this.new_name
+		}
+		return tmp
+	}
+}
+export class UpdateGroupNameResp{
+	fromOBJ(_obj:Object){
+	}
+}
 export class UpdateNameInGroupReq{
 	group_id: string = ''
 	new_name: string = ''
@@ -448,8 +466,21 @@ export class UpdateNameInGroupResp{
 	fromOBJ(_obj:Object){
 	}
 }
+export class UpdateSelfNameReq{
+	new_name: string = ''
+	toJSON(){
+		let tmp = {}
+		if(this.new_name){
+			tmp["new_name"]=this.new_name
+		}
+		return tmp
+	}
+}
+export class UpdateSelfNameResp{
+	fromOBJ(_obj:Object){
+	}
+}
 export class UpdateUserRelationNameReq{
-	//if target_type == "user" && (target) == (userid in token) means update self's name
 	target: string = ''
 	target_type: string = ''
 	new_name: string = ''
@@ -509,6 +540,8 @@ function call(timeout: number,url: string,opts: Object,error: (arg: LogicError)=
 		}
 	})
 }
+const _WebPathRelationUpdateSelfName: string ="/im.relation/update_self_name";
+const _WebPathRelationUpdateGroupName: string ="/im.relation/update_group_name";
 const _WebPathRelationMakeFriend: string ="/im.relation/make_friend";
 const _WebPathRelationAcceptMakeFriend: string ="/im.relation/accept_make_friend";
 const _WebPathRelationRefuseMakeFriend: string ="/im.relation/refuse_make_friend";
@@ -537,6 +570,30 @@ export class RelationBrowserClientToC {
 			throw "RelationBrowserClientToC's host missing"
 		}
 		this.host=host
+	}
+	//timeout's unit is millisecond,it will be used when > 0
+	update_self_name(header: Object,req: UpdateSelfNameReq,timeout: number,error: (arg: LogicError)=>void,success: (arg: UpdateSelfNameResp)=>void){
+		if(!header){
+			header={}
+		}
+		header["Content-Type"] = "application/json"
+		call(timeout,this.host+_WebPathRelationUpdateSelfName,{method:"POST",headers:header,body:JSON.stringify(req)},error,function(arg: Object){
+			let r=new UpdateSelfNameResp()
+			r.fromOBJ(arg)
+			success(r)
+		})
+	}
+	//timeout's unit is millisecond,it will be used when > 0
+	update_group_name(header: Object,req: UpdateGroupNameReq,timeout: number,error: (arg: LogicError)=>void,success: (arg: UpdateGroupNameResp)=>void){
+		if(!header){
+			header={}
+		}
+		header["Content-Type"] = "application/json"
+		call(timeout,this.host+_WebPathRelationUpdateGroupName,{method:"POST",headers:header,body:JSON.stringify(req)},error,function(arg: Object){
+			let r=new UpdateGroupNameResp()
+			r.fromOBJ(arg)
+			success(r)
+		})
 	}
 	//timeout's unit is millisecond,it will be used when > 0
 	make_friend(header: Object,req: MakeFriendReq,timeout: number,error: (arg: LogicError)=>void,success: (arg: MakeFriendResp)=>void){

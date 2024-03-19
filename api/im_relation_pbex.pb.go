@@ -7,6 +7,31 @@
 package api
 
 // return empty means pass
+func (m *UpdateSelfNameReq) Validate() (errstr string) {
+	if len(m.GetNewName()) <= 0 {
+		return "field: new_name in object: update_self_name_req check value str len gt failed"
+	}
+	if len(m.GetNewName()) > 64 {
+		return "field: new_name in object: update_self_name_req check value str len lte failed"
+	}
+	return ""
+}
+
+// return empty means pass
+func (m *UpdateGroupNameReq) Validate() (errstr string) {
+	if len(m.GetGroupId()) != 24 {
+		return "field: group_id in object: update_group_name_req check value str len eq failed"
+	}
+	if len(m.GetNewName()) <= 0 {
+		return "field: new_name in object: update_group_name_req check value str len gt failed"
+	}
+	if len(m.GetNewName()) > 64 {
+		return "field: new_name in object: update_group_name_req check value str len lte failed"
+	}
+	return ""
+}
+
+// return empty means pass
 func (m *MakeFriendReq) Validate() (errstr string) {
 	if len(m.GetUserId()) != 24 {
 		return "field: user_id in object: make_friend_req check value str len eq failed"
@@ -144,6 +169,9 @@ func (m *UpdateUserRelationNameReq) Validate() (errstr string) {
 	if len(m.GetNewName()) <= 0 {
 		return "field: new_name in object: update_user_relation_name_req check value str len gt failed"
 	}
+	if len(m.GetNewName()) > 64 {
+		return "field: new_name in object: update_user_relation_name_req check value str len lte failed"
+	}
 	return ""
 }
 
@@ -154,6 +182,9 @@ func (m *UpdateNameInGroupReq) Validate() (errstr string) {
 	}
 	if len(m.GetNewName()) <= 0 {
 		return "field: new_name in object: update_name_in_group_req check value str len gt failed"
+	}
+	if len(m.GetNewName()) > 64 {
+		return "field: new_name in object: update_name_in_group_req check value str len lte failed"
 	}
 	return ""
 }

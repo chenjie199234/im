@@ -53,6 +53,12 @@ func (s *Service) Send(ctx context.Context, req *api.SendReq) (*api.SendResp, er
 	}
 	md := metadata.GetMetadata(ctx)
 	sender := md["Token-User"]
+	//check the rate limit
+	if e := s.chatDao.RedisSendRecallRate(ctx, sender); e != nil {
+		log.Error(ctx, "[Send] rate check failed", log.String("sender", sender), log.CError(e))
+		s.stop.DoneOne()
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
 	//check the relation in target's view
 	if req.TargetType == "user" {
 		if _, e := s.relationDao.GetUserRelation(ctx, req.Target, sender, "user"); e != nil {
@@ -155,9 +161,15 @@ func (s *Service) Recall(ctx context.Context, req *api.RecallReq) (*api.RecallRe
 	}
 	md := metadata.GetMetadata(ctx)
 	recaller := md["Token-User"]
+	//check the rate limit
+	if e := s.chatDao.RedisSendRecallRate(ctx, recaller); e != nil {
+		log.Error(ctx, "[Recall] rate check failed", log.String("recaller", recaller), log.CError(e))
+		s.stop.DoneOne()
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
 	//check the relation in self's view
 	if _, e := s.relationDao.GetUserRelation(ctx, recaller, req.Target, req.TargetType); e != nil {
-		log.Error(ctx, "[Send] check relation failed",
+		log.Error(ctx, "[Recall] check relation failed",
 			log.String("recaller", recaller),
 			log.String("target", req.Target),
 			log.String("target_type", req.TargetType),
@@ -263,6 +275,12 @@ func (s *Service) Ack(ctx context.Context, req *api.AckReq) (*api.AckResp, error
 func (s *Service) Pull(ctx context.Context, req *api.PullReq) (*api.PullResp, error) {
 	md := metadata.GetMetadata(ctx)
 	puller := md["Token-User"]
+	chatkey := util.FormChatKey(puller, req.Target, req.TargetType)
+	//check the rate limit
+	if e := s.chatDao.RedisPullRate(ctx, puller, chatkey); e != nil {
+		log.Error(ctx, "[Pull] rate check failed", log.String("puller", puller), log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
 	//check the relation in self's view
 	if _, e := s.relationDao.GetUserRelation(ctx, puller, req.Target, req.TargetType); e != nil {
 		log.Error(ctx, "[Pull] check relation failed",
@@ -275,7 +293,6 @@ func (s *Service) Pull(ctx context.Context, req *api.PullReq) (*api.PullResp, er
 	resp := &api.PullResp{
 		Msgs: make([]*api.MsgInfo, 0, req.Count),
 	}
-	chatkey := util.FormChatKey(puller, req.Target, req.TargetType)
 	mintimestamp := time.Now().Unix() - 30*24*60*60
 	if req.StartMsgIndex != 0 {
 		msgs, e := s.chatDao.MongoGetMsgs(ctx, chatkey, req.Direction, req.StartMsgIndex, req.Count, uint32(mintimestamp))

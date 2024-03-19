@@ -38,6 +38,54 @@ func Start() *Service {
 		relationDao: relationdao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetRedis("gate_redis"), config.GetMongo("im_mongo")),
 	}
 }
+func (s *Service) UpdateSelfName(ctx context.Context, req *api.UpdateSelfNameReq) (*api.UpdateSelfNameResp, error) {
+	md := metadata.GetMetadata(ctx)
+	userid := md["Token-User"]
+	//rate check
+	if e := s.relationDao.RedisUserRelationRate(ctx, userid); e != nil {
+		log.Error(ctx, "[UpdateSelfName] rate check failed", log.String("user_id", userid), log.String("new_name", req.NewName), log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	if e := s.relationDao.SetUserName(ctx, userid, req.NewName); e != nil {
+		log.Error(ctx, "[UpdateSelfName] dao op failed",
+			log.String("user_id", userid),
+			log.String("new_name", req.NewName),
+			log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	return &api.UpdateSelfNameResp{}, nil
+}
+func (s *Service) UpdateGroupName(ctx context.Context, req *api.UpdateGroupNameReq) (*api.UpdateGroupNameResp, error) {
+	md := metadata.GetMetadata(ctx)
+	operator := md["Token-User"]
+	if info, e := s.relationDao.GetGroupMember(ctx, req.GroupId, operator); e != nil {
+		log.Error(ctx, "[UpdateGroupName] get operator's group info failed",
+			log.String("operator", operator),
+			log.String("group_id", req.GroupId),
+			log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	} else if info.Duty != 2 {
+		return nil, ecode.ErrPermission
+	}
+	//rate check
+	if e := s.relationDao.RedisGroupRelationRate(ctx, req.GroupId); e != nil {
+		log.Error(ctx, "[UpdateGroupName] rate check failed",
+			log.String("operator", operator),
+			log.String("group_id", req.GroupId),
+			log.String("new_name", req.NewName),
+			log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	if e := s.relationDao.SetGroupName(ctx, req.GroupId, req.NewName); e != nil {
+		log.Error(ctx, "[UpdateGroupName] dao op failed",
+			log.String("operator", operator),
+			log.String("group_id", req.GroupId),
+			log.String("new_name", req.NewName),
+			log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	return &api.UpdateGroupNameResp{}, nil
+}
 func (s *Service) MakeFriend(ctx context.Context, req *api.MakeFriendReq) (*api.MakeFriendResp, error) {
 	md := metadata.GetMetadata(ctx)
 	requester := md["Token-User"]
@@ -631,33 +679,41 @@ func (s *Service) UpdateUserRelationName(ctx context.Context, req *api.UpdateUse
 	md := metadata.GetMetadata(ctx)
 	userid := md["Token-User"]
 	if req.TargetType == "user" && req.Target == userid {
-		//update self's name
-		if e := s.relationDao.SetUserName(ctx, userid, req.NewName); e != nil {
-			log.Error(ctx, "[UpdateUserRelationName] dao op failed",
-				log.String("user_id", userid),
-				log.String("target", req.Target),
-				log.String("target_type", req.TargetType),
-				log.String("new_name", req.NewName),
-				log.CError(e))
-			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
-		}
-	} else {
-		//update other's name
-		if e := s.relationDao.UpdateUserRelationName(ctx, userid, req.Target, req.TargetType, req.NewName); e != nil {
-			log.Error(ctx, "[UpdateUserRelationName] dao op failed",
-				log.String("user_id", userid),
-				log.String("target", req.Target),
-				log.String("target_type", req.TargetType),
-				log.String("new_name", req.NewName),
-				log.CError(e))
-			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
-		}
+		return nil, ecode.ErrReq
+	}
+	//rate check
+	if e := s.relationDao.RedisUserRelationRate(ctx, userid); e != nil {
+		log.Error(ctx, "[UpdateUserRelationName] rate check failed",
+			log.String("user_id", userid),
+			log.String("target", req.Target),
+			log.String("target_type", req.TargetType),
+			log.String("new_name", req.NewName),
+			log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	if e := s.relationDao.UpdateUserRelationName(ctx, userid, req.Target, req.TargetType, req.NewName); e != nil {
+		log.Error(ctx, "[UpdateUserRelationName] dao op failed",
+			log.String("user_id", userid),
+			log.String("target", req.Target),
+			log.String("target_type", req.TargetType),
+			log.String("new_name", req.NewName),
+			log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	return &api.UpdateUserRelationNameResp{}, nil
 }
 func (s *Service) UpdateNameInGroup(ctx context.Context, req *api.UpdateNameInGroupReq) (*api.UpdateNameInGroupResp, error) {
 	md := metadata.GetMetadata(ctx)
 	userid := md["Token-User"]
+	//rate check
+	if e := s.relationDao.RedisUserRelationRate(ctx, userid); e != nil {
+		log.Error(ctx, "[UpdateNameInGroup] rate check failed",
+			log.String("user_id", userid),
+			log.String("group_id", req.GroupId),
+			log.String("new_name", req.NewName),
+			log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
 	if e := s.relationDao.UpdateNameInGroup(ctx, userid, req.GroupId, req.NewName); e != nil {
 		log.Error(ctx, "[UpdateNameInGroup] dao op failed",
 			log.String("user_id", userid),
@@ -697,6 +753,16 @@ func (s *Service) UpdateDutyInGroup(ctx context.Context, req *api.UpdateDutyInGr
 	}
 	if operatorinfo.Duty == 0 || operatorinfo.Duty <= uint8(req.NewDuty) || operatorinfo.Duty <= userinfo.Duty {
 		return nil, ecode.ErrPermission
+	}
+	//check rate
+	if e := s.relationDao.RedisGroupRelationRate(ctx, req.GroupId); e != nil {
+		log.Error(ctx, "[UpdateDutyInGroup] rate check failed",
+			log.String("operator", operator),
+			log.String("group_id", req.GroupId),
+			log.String("user_id", req.UserId),
+			log.Uint64("new_duty", uint64(req.NewDuty)),
+			log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	if e = s.relationDao.UpdateDutyInGroup(ctx, req.UserId, req.GroupId, uint8(req.NewDuty)); e != nil {
 		log.Error(ctx, "[UpdateDutyInGroup] dao op failed",
