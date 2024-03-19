@@ -263,7 +263,15 @@ func (s *Service) Ack(ctx context.Context, req *api.AckReq) (*api.AckResp, error
 func (s *Service) Pull(ctx context.Context, req *api.PullReq) (*api.PullResp, error) {
 	md := metadata.GetMetadata(ctx)
 	puller := md["Token-User"]
-	//TODO check relation
+	//check the relation in self's view
+	if _, e := s.relationDao.GetUserRelation(ctx, puller, req.Target, req.TargetType); e != nil {
+		log.Error(ctx, "[Pull] check relation failed",
+			log.String("puller", puller),
+			log.String("target", req.Target),
+			log.String("target_type", req.TargetType),
+			log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
 	resp := &api.PullResp{
 		Msgs: make([]*api.MsgInfo, 0, req.Count),
 	}
