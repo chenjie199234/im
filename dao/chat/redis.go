@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"math"
 
 	"github.com/chenjie199234/im/ecode"
 	"github.com/chenjie199234/im/model"
@@ -36,21 +37,21 @@ return num`)
 
 //------------------------------------index-----------------------------------
 
-// if MsgIndex or RecallIndex or AckIndex < 0 means this kind of index will not be setted
-func (d *Dao) RedisSetIndex(ctx context.Context, userid, chatkey string, MsgIndex, RecallIndex, AckIndex int64) error {
+// if MsgIndex or RecallIndex or AckIndex is math.MaxUint32 means this kind of index will not be setted
+func (d *Dao) RedisSetIndex(ctx context.Context, userid, chatkey string, MsgIndex, RecallIndex, AckIndex uint32) error {
 	key := "im_user_{" + userid + "}"
 	field1 := chatkey + "_msg"
 	field2 := chatkey + "_recall"
 	field3 := chatkey + "_ack"
 	args := make([]interface{}, 0, 7)
 	args = append(args, defaultExpire)
-	if MsgIndex >= 0 {
+	if MsgIndex != math.MaxUint32 {
 		args = append(args, field1, MsgIndex)
 	}
-	if RecallIndex >= 0 {
+	if RecallIndex != math.MaxUint32 {
 		args = append(args, field2, RecallIndex)
 	}
-	if AckIndex >= 0 {
+	if AckIndex != math.MaxUint32 {
 		args = append(args, field3, AckIndex)
 	}
 	return setindex.Run(ctx, d.imredis, []string{key}, args...).Err()

@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"math"
 	"unsafe"
 
 	"github.com/chenjie199234/im/model"
@@ -72,7 +73,7 @@ func (d *Dao) GetIndex(ctx context.Context, userid, chatkey string) (*model.IMIn
 	r.AckIndex = *(*uint32)(unsafeAck)
 	go func() {
 		ctx := trace.CloneSpan(ctx)
-		if e := d.RedisSetIndex(ctx, userid, chatkey, int64(r.MsgIndex), int64(r.RecallIndex), int64(r.AckIndex)); e != nil {
+		if e := d.RedisSetIndex(ctx, userid, chatkey, r.MsgIndex, r.RecallIndex, r.AckIndex); e != nil {
 			log.Error(ctx, "[dao.GetIndex] update redis failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
 		}
 	}()
@@ -87,7 +88,7 @@ func (d *Dao) Ack(ctx context.Context, userid, chatkey string, msgindex uint32) 
 			log.CError(e))
 		return e
 	}
-	if e = d.RedisSetIndex(ctx, userid, chatkey, -1, -1, int64(msgindex)); e != nil {
+	if e = d.RedisSetIndex(ctx, userid, chatkey, math.MaxUint32, math.MaxUint32, msgindex); e != nil {
 		log.Error(ctx, "[dao.Ack] redis op failed",
 			log.String("user_id", userid),
 			log.String("chat_key", chatkey),

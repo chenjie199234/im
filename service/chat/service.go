@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"sync"
 	"time"
 
@@ -115,9 +116,9 @@ func (s *Service) pushsend(ctx context.Context, msg *model.MsgInfo, target, targ
 		}
 		var e error
 		if userid == msg.Sender {
-			e = s.chatDao.RedisSetIndex(ctx, userid, msg.ChatKey, int64(msg.MsgIndex), -1, int64(msg.MsgIndex))
+			e = s.chatDao.RedisSetIndex(ctx, userid, msg.ChatKey, msg.MsgIndex, math.MaxUint32, msg.MsgIndex)
 		} else {
-			e = s.chatDao.RedisSetIndex(ctx, userid, msg.ChatKey, int64(msg.MsgIndex), -1, -1)
+			e = s.chatDao.RedisSetIndex(ctx, userid, msg.ChatKey, msg.MsgIndex, math.MaxUint32, math.MaxUint32)
 		}
 		if e != nil {
 			time.Sleep(time.Millisecond * 10)
@@ -195,7 +196,7 @@ func (s *Service) pushrecall(ctx context.Context, recallindex, msgindex uint32, 
 				log.Error(ctx, "[PushRecall] push mq failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
 			}
 		}
-		if e := s.chatDao.RedisSetIndex(ctx, userid, chatkey, -1, int64(recallindex), -1); e != nil {
+		if e := s.chatDao.RedisSetIndex(ctx, userid, chatkey, math.MaxUint32, recallindex, math.MaxUint32); e != nil {
 			time.Sleep(time.Millisecond * 10)
 			if e = s.chatDao.RedisDelIndex(ctx, userid, chatkey); e != nil {
 				log.Error(ctx, "[PushRecall] redis op failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
