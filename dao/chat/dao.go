@@ -7,6 +7,7 @@ import (
 	"github.com/chenjie199234/im/model"
 
 	"github.com/chenjie199234/Corelib/log"
+	"github.com/chenjie199234/Corelib/log/trace"
 	cmongo "github.com/chenjie199234/Corelib/mongo"
 	cmysql "github.com/chenjie199234/Corelib/mysql"
 	credis "github.com/chenjie199234/Corelib/redis"
@@ -50,11 +51,6 @@ func (d *Dao) GetIndex(ctx context.Context, userid, chatkey string) (*model.IMIn
 			log.Error(ctx, "[dao.GetIndex] db op failed", log.String("chat_key", chatkey), log.CError(e))
 			return nil, e
 		}
-		go func() {
-			if e := d.RedisSetIndex(ctx, userid, chatkey, msg, recall, 0); e != nil {
-				log.Error(ctx, "[dao.GetIndex] update redis failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
-			}
-		}()
 		r := &model.IMIndex{MsgIndex: msg, RecallIndex: recall}
 		return unsafe.Pointer(r), nil
 	})
@@ -67,14 +63,6 @@ func (d *Dao) GetIndex(ctx context.Context, userid, chatkey string) (*model.IMIn
 			log.Error(ctx, "[dao.GetIndex] db op failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
 			return nil, e
 		}
-		//when ack is 0,don't need to update the redis,it is already updated in the last oneshot
-		if ack != 0 {
-			go func() {
-				if e := d.RedisSetIndex(ctx, userid, chatkey, 0, 0, ack); e != nil {
-					log.Error(ctx, "[dao.GetIndex] update redis failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
-				}
-			}()
-		}
 		return unsafe.Pointer(&ack), nil
 	})
 	if e != nil {
@@ -82,6 +70,12 @@ func (d *Dao) GetIndex(ctx context.Context, userid, chatkey string) (*model.IMIn
 	}
 	r := (*model.IMIndex)(unsafeIndex)
 	r.AckIndex = *(*uint32)(unsafeAck)
+	go func() {
+		ctx := trace.CloneSpan(ctx)
+		if e := d.RedisSetIndex(ctx, userid, chatkey, int64(r.MsgIndex), int64(r.RecallIndex), int64(r.AckIndex)); e != nil {
+			log.Error(ctx, "[dao.GetIndex] update redis failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
+		}
+	}()
 	return r, nil
 }
 func (d *Dao) Ack(ctx context.Context, userid, chatkey string, msgindex uint32) (e error) {
@@ -93,7 +87,7 @@ func (d *Dao) Ack(ctx context.Context, userid, chatkey string, msgindex uint32) 
 			log.CError(e))
 		return e
 	}
-	if e = d.RedisSetIndex(ctx, userid, chatkey, 0, 0, msgindex); e != nil {
+	if e = d.RedisSetIndex(ctx, userid, chatkey, -1, -1, int64(msgindex)); e != nil {
 		log.Error(ctx, "[dao.Ack] redis op failed",
 			log.String("user_id", userid),
 			log.String("chat_key", chatkey),
