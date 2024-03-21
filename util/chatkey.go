@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-func FormChatKey(sender, target, targetType string) (chatkey string) {
+func FormChatKey(self, target, targetType string) (chatkey string) {
 	if targetType == "user" {
-		strs := []string{sender, target}
+		strs := []string{self, target}
 		sort.Strings(strs)
 		chatkey = strings.Join(strs, "-")
 	} else {
@@ -16,16 +16,16 @@ func FormChatKey(sender, target, targetType string) (chatkey string) {
 	}
 	return
 }
-func ParseChatKey(sender, chatkey string) (target string, targetType string, e error) {
-	if strings.Contains(chatkey, sender) {
+func ParseChatKey(self, chatkey string) (target string, targetType string, e error) {
+	if strings.Contains(chatkey, self) {
 		targetType = "user"
 		pieces := strings.Split(chatkey, "-")
 		if len(pieces) != 2 {
 			//this is impossible
 			e = errors.New("chat key format wrong")
-		} else if pieces[0] == sender {
+		} else if pieces[0] == self {
 			target = pieces[1]
-		} else if pieces[1] == sender {
+		} else if pieces[1] == self {
 			target = pieces[0]
 		} else {
 			//this is impossible

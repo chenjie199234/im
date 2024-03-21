@@ -7,17 +7,21 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/chenjie199234/im/api"
 	"github.com/chenjie199234/im/config"
+	chatdao "github.com/chenjie199234/im/dao/chat"
 	relationdao "github.com/chenjie199234/im/dao/relation"
 	"github.com/chenjie199234/im/ecode"
 	"github.com/chenjie199234/im/model"
+	"github.com/chenjie199234/im/util"
 
 	// "github.com/chenjie199234/Corelib/cgrpc"
 	// "github.com/chenjie199234/Corelib/crpc"
 	// "github.com/chenjie199234/Corelib/web"
 	"github.com/chenjie199234/Corelib/log"
+	"github.com/chenjie199234/Corelib/log/trace"
 	"github.com/chenjie199234/Corelib/metadata"
 	"github.com/chenjie199234/Corelib/util/common"
 	"github.com/chenjie199234/Corelib/util/graceful"
@@ -28,6 +32,7 @@ type Service struct {
 	stop *graceful.Graceful
 
 	relationDao *relationdao.Dao
+	chatDao     *chatdao.Dao
 }
 
 // Start -
@@ -36,13 +41,14 @@ func Start() *Service {
 		stop: graceful.New(),
 
 		relationDao: relationdao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetRedis("gate_redis"), config.GetMongo("im_mongo")),
+		chatDao:     chatdao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetRedis("gate_redis"), config.GetMongo("im_mongo")),
 	}
 }
 func (s *Service) UpdateSelfName(ctx context.Context, req *api.UpdateSelfNameReq) (*api.UpdateSelfNameResp, error) {
 	md := metadata.GetMetadata(ctx)
 	userid := md["Token-User"]
 	//rate check
-	if e := s.relationDao.RedisUserRelationRate(ctx, userid); e != nil {
+	if e := s.relationDao.RedisUpdateUserRelationRate(ctx, userid); e != nil {
 		log.Error(ctx, "[UpdateSelfName] rate check failed", log.String("user_id", userid), log.String("new_name", req.NewName), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
@@ -68,7 +74,7 @@ func (s *Service) UpdateGroupName(ctx context.Context, req *api.UpdateGroupNameR
 		return nil, ecode.ErrPermission
 	}
 	//rate check
-	if e := s.relationDao.RedisGroupRelationRate(ctx, req.GroupId); e != nil {
+	if e := s.relationDao.RedisUpdateGroupRelationRate(ctx, req.GroupId); e != nil {
 		log.Error(ctx, "[UpdateGroupName] rate check failed",
 			log.String("operator", operator),
 			log.String("group_id", req.GroupId),
@@ -596,7 +602,17 @@ func (s *Service) KickGroup(ctx context.Context, req *api.KickGroupReq) (*api.Ki
 func (s *Service) Relations(ctx context.Context, req *api.RelationsReq) (*api.RelationsResp, error) {
 	md := metadata.GetMetadata(ctx)
 	userid := md["Token-User"]
+	//check rate
+	if e := s.relationDao.RedisGetUserRelationsRate(ctx, userid); e != nil {
+		log.Error(ctx, "[Relations] rate check failed", log.String("user_id", userid), log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
 	relations, e := s.relationDao.GetUserRelations(ctx, userid)
+	if e != nil {
+		log.Error(ctx, "[Relations] dao op failed", log.String("user_id", userid), log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	indexes, e := s.chatDao.RedisGetIndexAll(ctx, userid)
 	if e != nil {
 		log.Error(ctx, "[Relations] dao op failed", log.String("user_id", userid), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
@@ -605,15 +621,82 @@ func (s *Service) Relations(ctx context.Context, req *api.RelationsReq) (*api.Re
 		Update:    true,
 		Relations: make([]*api.RelationInfo, 0, len(relations)),
 	}
-	strs := make([]string, 0, len(relations))
+	missed := make([]string, 0, 10)
 	for _, relation := range relations {
-		resp.Relations = append(resp.Relations, &api.RelationInfo{
-			Target:     relation.Target,
-			TargetType: relation.TargetType,
-			Name:       relation.Name,
-			Duty:       uint32(relation.Duty),
-		})
-		strs = append(strs, relation.TargetType+"_"+relation.Target+"_"+relation.Name)
+		if relation.Target == "" {
+			continue
+		}
+		chatkey := util.FormChatKey(userid, relation.Target, relation.TargetType)
+		if _, ok := indexes[chatkey]; !ok {
+			missed = append(missed, chatkey)
+		}
+	}
+	if len(missed) > 0 {
+		lker := &sync.Mutex{}
+		wg := &sync.WaitGroup{}
+		wg.Add(len(missed))
+		for _, v := range missed {
+			chatkey := v
+			util.AddWork(func() {
+				defer wg.Done()
+				index, err := s.chatDao.GetIndex(ctx, userid, chatkey)
+				if err != nil {
+					log.Error(ctx, "[Relations] dao op failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(err))
+					e = err
+					return
+				}
+				lker.Lock()
+				indexes[chatkey] = &model.IMIndex{
+					MsgIndex:    index.MsgIndex,
+					RecallIndex: index.RecallIndex,
+					AckIndex:    index.AckIndex,
+				}
+				lker.Unlock()
+			})
+		}
+		wg.Wait()
+		if e != nil {
+			return nil, e
+		}
+	}
+	for _, relation := range relations {
+		if relation.Target == "" {
+			//self
+			resp.Relations = append(resp.Relations, &api.RelationInfo{
+				Target:      relation.Target,
+				TargetType:  relation.TargetType,
+				Name:        relation.Name,
+				MsgIndex:    0,
+				RecallIndex: 0,
+				AckIndex:    0,
+			})
+		} else {
+			chatkey := util.FormChatKey(userid, relation.Target, relation.TargetType)
+			index := indexes[chatkey]
+			resp.Relations = append(resp.Relations, &api.RelationInfo{
+				Target:      relation.Target,
+				TargetType:  relation.TargetType,
+				Name:        relation.Name,
+				MsgIndex:    index.MsgIndex,
+				RecallIndex: index.RecallIndex,
+				AckIndex:    index.AckIndex,
+			})
+		}
+	}
+	strs := make([]string, 0, len(relations))
+	for _, v := range resp.Relations {
+		str := v.TargetType +
+			"_" +
+			v.Target +
+			"_" +
+			v.Name +
+			"_" +
+			strconv.FormatUint(uint64(v.MsgIndex), 10) +
+			"_" +
+			strconv.FormatUint(uint64(v.RecallIndex), 10) +
+			"_" +
+			strconv.FormatUint(uint64(v.AckIndex), 10)
+		strs = append(strs, str)
 	}
 	sort.Strings(strs)
 	hashstr := sha256.Sum256(common.STB(strings.Join(strs, ",")))
@@ -621,11 +704,44 @@ func (s *Service) Relations(ctx context.Context, req *api.RelationsReq) (*api.Re
 		resp.Update = false
 		resp.Relations = nil
 	}
+	//do clean
+	go func() {
+		needdel := make([]string, 0, 10)
+		for chatkey := range indexes {
+			find := false
+			for _, relation := range relations {
+				if util.FormChatKey(userid, relation.Target, relation.TargetType) == chatkey {
+					find = true
+					break
+				}
+			}
+			if !find {
+				needdel = append(needdel, chatkey)
+			}
+		}
+		if len(needdel) == 0 {
+			return
+		}
+		ctx := trace.CloneSpan(ctx)
+		for _, v := range needdel {
+			chatkey := v
+			util.AddWork(func() {
+				if e := s.chatDao.RedisDelIndex(ctx, userid, chatkey); e != nil {
+					log.Error(ctx, "[Relations] del redis index failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
+				}
+			})
+		}
+	}()
 	return resp, nil
 }
 func (s *Service) GroupMembers(ctx context.Context, req *api.GroupMembersReq) (*api.GroupMembersResp, error) {
 	md := metadata.GetMetadata(ctx)
 	userid := md["Token-User"]
+	//check rate
+	if e := s.relationDao.RedisGetGroupMembersRate(ctx, userid, req.GroupId); e != nil {
+		log.Error(ctx, "[GroupMembers] rate check failed", log.String("user_id", userid), log.String("group_id", req.GroupId), log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
 	//check current relation in user's view
 	if _, e := s.relationDao.GetUserRelation(ctx, userid, req.GroupId, "group"); e != nil {
 		log.Error(ctx, "[GroupMembers] check current relation in user's view failed",
@@ -655,15 +771,14 @@ func (s *Service) GroupMembers(ctx context.Context, req *api.GroupMembersReq) (*
 	}
 	resp := &api.GroupMembersResp{
 		Update:  true,
-		Members: make([]*api.RelationInfo, 0, len(members)),
+		Members: make([]*api.GroupMemberInfo, 0, len(members)),
 	}
 	strs := make([]string, 0, len(members))
 	for _, member := range members {
-		resp.Members = append(resp.Members, &api.RelationInfo{
-			Target:     member.Target,
-			TargetType: "user",
-			Name:       member.Name,
-			Duty:       uint32(member.Duty),
+		resp.Members = append(resp.Members, &api.GroupMemberInfo{
+			Member: member.Target,
+			Name:   member.Name,
+			Duty:   uint32(member.Duty),
 		})
 		strs = append(strs, member.Target+"_"+strconv.Itoa(int(member.Duty))+"_"+member.Name)
 	}
@@ -682,7 +797,7 @@ func (s *Service) UpdateUserRelationName(ctx context.Context, req *api.UpdateUse
 		return nil, ecode.ErrReq
 	}
 	//rate check
-	if e := s.relationDao.RedisUserRelationRate(ctx, userid); e != nil {
+	if e := s.relationDao.RedisUpdateUserRelationRate(ctx, userid); e != nil {
 		log.Error(ctx, "[UpdateUserRelationName] rate check failed",
 			log.String("user_id", userid),
 			log.String("target", req.Target),
@@ -706,7 +821,7 @@ func (s *Service) UpdateNameInGroup(ctx context.Context, req *api.UpdateNameInGr
 	md := metadata.GetMetadata(ctx)
 	userid := md["Token-User"]
 	//rate check
-	if e := s.relationDao.RedisUserRelationRate(ctx, userid); e != nil {
+	if e := s.relationDao.RedisUpdateUserRelationRate(ctx, userid); e != nil {
 		log.Error(ctx, "[UpdateNameInGroup] rate check failed",
 			log.String("user_id", userid),
 			log.String("group_id", req.GroupId),
@@ -755,7 +870,7 @@ func (s *Service) UpdateDutyInGroup(ctx context.Context, req *api.UpdateDutyInGr
 		return nil, ecode.ErrPermission
 	}
 	//check rate
-	if e := s.relationDao.RedisGroupRelationRate(ctx, req.GroupId); e != nil {
+	if e := s.relationDao.RedisUpdateGroupRelationRate(ctx, req.GroupId); e != nil {
 		log.Error(ctx, "[UpdateDutyInGroup] rate check failed",
 			log.String("operator", operator),
 			log.String("group_id", req.GroupId),

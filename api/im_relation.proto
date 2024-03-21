@@ -211,15 +211,24 @@ message relation_info{
 	string target=1;//empty means this is self
 	string target_type=2;//user or group
 	string name=3;
-	uint32 duty=4;//only when the group's member use this field,0-normal,1-system owner,2-owner,3-admin
+	uint32 msg_index=4;
+	uint32 recall_index=5;
+	uint32 ack_index=6;
 }
 message relations_req{
-	//hex(sha256(join(sort(["user_"+userid1+"_"+name,"group_"+groupid1+"_"+name,"user_"+userid2+"_"+name]),",")))
+	//hex(sha256(join(sort(["user_"+userid1+"_"+name+"_"+msg_index+"_"+recall_index+"_"+ack_index,
+	//	"group_"+groupid1+"_"+name+"_"+msg_index+"_"+recall_index+"_"+ack_index,
+	//	"user_"+userid2+"_"+name+"_"+msg_index+"_"+recall_index+"_"+ack_index]),",")))
 	string current_hash=1[(pbex.string_bytes_len_eq)=64];
 }
 message relations_resp{
 	bool update=1;//if the current_hash is same,this field is false
 	repeated relation_info relations=2;//if the current_hash is same,this field is empty
+}
+message group_member_info{
+	string member=1;//userid
+	string name=2;
+	uint32 duty=3;//0-normal,1-system owner,2-owner,3-admin
 }
 message group_members_req{
 	//hex(sha256(join(sort([userid1+"_"+duty+"_"+name,userid2+"_"+duty+"_"+name]),",")))
@@ -228,7 +237,7 @@ message group_members_req{
 }
 message group_members_resp{
 	bool update=1;//if the current_hash is same,this field is false
-	repeated relation_info members=2;//if the current_hash is same,this field is empty
+	repeated group_member_info members=2;//if the current_hash is same,this field is empty
 }
 message update_user_relation_name_req{
 	string target=1[(pbex.string_bytes_len_eq)=24];

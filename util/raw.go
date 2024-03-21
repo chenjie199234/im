@@ -95,6 +95,16 @@ func RawVerify(ctx context.Context, peerVerifyData []byte) (response []byte, uni
 		log.Error(ctx, "[RawVerify] token verify failed", log.String("token", string(peerVerifyData)))
 		return nil, "", false
 	}
+	//check rate
+	status, e := rdb.RateLimit(ctx, map[string][2]uint64{"user_login_{" + t.UserID + "}": {10, 60}})
+	if e != nil {
+		log.Error(ctx, "[RawVerify] rate check failed", log.String("user_id", t.UserID), log.CError(e))
+		return nil, "", false
+	}
+	if !status {
+		log.Error(ctx, "[RawVerify] login too frequently", log.String("user_id", t.UserID))
+		return nil, "", false
+	}
 	if p := rawInstance.GetPeer(t.UserID); p != nil {
 		//this user already connected
 		//this new connection will kick the old connection

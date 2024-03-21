@@ -390,7 +390,9 @@ Method:       POST
 Content-Type: application/json
 ------------------------------------------------------------------------------------------------------------
 {
-	//hex(sha256(join(sort(["user_"+userid1+"_"+name,"group_"+groupid1+"_"+name,"user_"+userid2+"_"+name]),",")))
+	//hex(sha256(join(sort(["user_"+userid1+"_"+name+"_"+msg_index+"_"+recall_index+"_"+ack_index,
+	//	"group_"+groupid1+"_"+name+"_"+msg_index+"_"+recall_index+"_"+ack_index,
+	//	"user_"+userid2+"_"+name+"_"+msg_index+"_"+recall_index+"_"+ack_index]),",")))
 	//value length must == 64
 	"current_hash":"str"
 }
@@ -418,9 +420,12 @@ relation_info: {
 	//user or group
 	"target_type":"str",
 	"name":"str",
-	//only when the group's member use this field,0-normal,1-system owner,2-owner,3-admin
 	//uint32
-	"duty":0
+	"msg_index":0,
+	//uint32
+	"recall_index":0,
+	//uint32
+	"ack_index":0
 }
 ------------------------------------------------------------------------------------------------------------
 ```
@@ -453,17 +458,15 @@ Success: httpcode:200
 	//if the current_hash is same,this field is false
 	"update":true,
 	//if the current_hash is same,this field is empty
-	//object relation_info
+	//object group_member_info
 	"members":[{},{}]
 }
 ------------------------------------------------------------------------------------------------------------
-relation_info: {
-	//empty means this is self
-	"target":"str",
-	//user or group
-	"target_type":"str",
+group_member_info: {
+	//userid
+	"member":"str",
 	"name":"str",
-	//only when the group's member use this field,0-normal,1-system owner,2-owner,3-admin
+	//0-normal,1-system owner,2-owner,3-admin
 	//uint32
 	"duty":0
 }

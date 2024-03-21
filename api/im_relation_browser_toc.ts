@@ -205,6 +205,23 @@ export class GroupInviteResp{
 	fromOBJ(_obj:Object){
 	}
 }
+export class GroupMemberInfo{
+	member: string = ''//userid
+	name: string = ''
+	//Warning!!!Type is uint32,be careful of sign(+) and overflow
+	duty: number = 0//0-normal,1-system owner,2-owner,3-admin
+	fromOBJ(obj:Object){
+		if(obj["member"]){
+			this.member=obj["member"]
+		}
+		if(obj["name"]){
+			this.name=obj["name"]
+		}
+		if(obj["duty"]){
+			this.duty=obj["duty"]
+		}
+	}
+}
 export class GroupMembersReq{
 	//hex(sha256(join(sort([userid1+"_"+duty+"_"+name,userid2+"_"+duty+"_"+name]),",")))
 	current_hash: string = ''
@@ -222,16 +239,16 @@ export class GroupMembersReq{
 }
 export class GroupMembersResp{
 	update: boolean = false//if the current_hash is same,this field is false
-	members: Array<RelationInfo|null>|null = null//if the current_hash is same,this field is empty
+	members: Array<GroupMemberInfo|null>|null = null//if the current_hash is same,this field is empty
 	fromOBJ(obj:Object){
 		if(obj["update"]){
 			this.update=obj["update"]
 		}
 		if(obj["members"] && obj["members"].length>0){
-			this.members=new Array<RelationInfo|null>()
+			this.members=new Array<GroupMemberInfo|null>()
 			for(let value of obj["members"]){
 				if(value){
-					let tmp=new RelationInfo()
+					let tmp=new GroupMemberInfo()
 					tmp.fromOBJ(value)
 					this.members.push(tmp)
 				}else{
@@ -338,7 +355,11 @@ export class RelationInfo{
 	target_type: string = ''//user or group
 	name: string = ''
 	//Warning!!!Type is uint32,be careful of sign(+) and overflow
-	duty: number = 0//only when the group's member use this field,0-normal,1-system owner,2-owner,3-admin
+	msg_index: number = 0
+	//Warning!!!Type is uint32,be careful of sign(+) and overflow
+	recall_index: number = 0
+	//Warning!!!Type is uint32,be careful of sign(+) and overflow
+	ack_index: number = 0
 	fromOBJ(obj:Object){
 		if(obj["target"]){
 			this.target=obj["target"]
@@ -349,13 +370,21 @@ export class RelationInfo{
 		if(obj["name"]){
 			this.name=obj["name"]
 		}
-		if(obj["duty"]){
-			this.duty=obj["duty"]
+		if(obj["msg_index"]){
+			this.msg_index=obj["msg_index"]
+		}
+		if(obj["recall_index"]){
+			this.recall_index=obj["recall_index"]
+		}
+		if(obj["ack_index"]){
+			this.ack_index=obj["ack_index"]
 		}
 	}
 }
 export class RelationsReq{
-	//hex(sha256(join(sort(["user_"+userid1+"_"+name,"group_"+groupid1+"_"+name,"user_"+userid2+"_"+name]),",")))
+	//hex(sha256(join(sort(["user_"+userid1+"_"+name+"_"+msg_index+"_"+recall_index+"_"+ack_index,
+	//	"group_"+groupid1+"_"+name+"_"+msg_index+"_"+recall_index+"_"+ack_index,
+	//	"user_"+userid2+"_"+name+"_"+msg_index+"_"+recall_index+"_"+ack_index]),",")))
 	current_hash: string = ''
 	toJSON(){
 		let tmp = {}
