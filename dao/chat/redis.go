@@ -2,14 +2,13 @@ package chat
 
 import (
 	"context"
+	"math"
 	"strconv"
 	"strings"
-	"math"
 
 	"github.com/chenjie199234/im/ecode"
 	"github.com/chenjie199234/im/model"
 
-	"github.com/chenjie199234/Corelib/util/common"
 	gredis "github.com/redis/go-redis/v9"
 )
 
@@ -54,7 +53,7 @@ func (d *Dao) RedisSetIndex(ctx context.Context, userid, chatkey string, MsgInde
 	if AckIndex != math.MaxUint32 {
 		args = append(args, field3, AckIndex)
 	}
-	return setindex.Run(ctx, d.imredis, []string{key}, args...).Err()
+	return setindex.Run(ctx, d.redis, []string{key}, args...).Err()
 }
 
 // return MsgIndex,RecallIndex,AckIndex
@@ -63,7 +62,7 @@ func (d *Dao) RedisGetIndex(ctx context.Context, userid, chatkey string) (*model
 	field1 := chatkey + "_msg"
 	field2 := chatkey + "_recall"
 	field3 := chatkey + "_ack"
-	rs, e := d.imredis.HMGet(ctx, key, field1, field2, field3).Result()
+	rs, e := d.redis.HMGet(ctx, key, field1, field2, field3).Result()
 	if e != nil {
 		return nil, e
 	}
@@ -88,7 +87,7 @@ func (d *Dao) RedisGetIndex(ctx context.Context, userid, chatkey string) (*model
 // return: key:chatkey,value:index
 func (d *Dao) RedisGetIndexAll(ctx context.Context, userid string) (map[string]*model.IMIndex, error) {
 	key := "im_user_{" + userid + "}"
-	tmp, e := d.imredis.HGetAll(ctx, key).Result()
+	tmp, e := d.redis.HGetAll(ctx, key).Result()
 	if e != nil {
 		return nil, e
 	}
@@ -154,46 +153,5 @@ func (d *Dao) RedisDelIndex(ctx context.Context, userid, chatkey string) error {
 	field1 := chatkey + "_msg"
 	field2 := chatkey + "_recall"
 	field3 := chatkey + "_ack"
-	return d.imredis.HDel(ctx, key, field1, field2, field3).Err()
-}
-
-// -------------------------------------------gate redis-------------------------------------
-func (d *Dao) GetSession(ctx context.Context, userid string) (*model.IMSession, error) {
-	key := "raw_user_{" + userid + "}"
-	rs, e := d.gateredis.HGetAll(ctx, key).Result()
-	if e == gredis.Nil {
-		e = ecode.ErrSession
-	}
-	if e != nil {
-		return nil, e
-	}
-	remoteaddr, ok := rs["remote_addr"]
-	if !ok {
-		return nil, ecode.ErrCacheDataBroken
-	}
-	realip, ok := rs["real_ip"]
-	if !ok {
-		return nil, ecode.ErrCacheDataBroken
-	}
-	gate, ok := rs["gate"]
-	if !ok {
-		return nil, ecode.ErrCacheDataBroken
-	}
-	str, ok := rs["netlag"]
-	if !ok {
-		return nil, ecode.ErrCacheDataBroken
-	}
-	netlag, e := strconv.ParseUint(str, 10, 64)
-	if e != nil {
-		return nil, ecode.ErrCacheDataBroken
-	}
-	return &model.IMSession{RemoteAddr: remoteaddr, RealIP: realip, Gate: gate, Netlag: netlag}, nil
-}
-
-// data can't be nil or empty
-func (d *Dao) Unicast(ctx context.Context, rawname, userid string, data []byte) error {
-	if len(data) == 0 {
-		return nil
-	}
-	return d.gateredis.PubUnicast(ctx, rawname, 32, userid, userid+"_"+common.BTS(data))
+	return d.redis.HDel(ctx, key, field1, field2, field3).Err()
 }

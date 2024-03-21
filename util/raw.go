@@ -18,19 +18,32 @@ import (
 )
 
 type MQ struct {
-	Type    string      //msg or recall
-	Content interface{} // *Msg or *Recall
+	Type    string      //msg or recall or userRelationAdd or userRelationDel or groupJoin or groupLeave or groupKick
+	Content interface{} // *Msg or *Recall or *UserAction or *GroupAction
 }
 type Msg struct {
-	Sender    string
-	Msg       string
-	Extra     string
-	MsgIndex  uint32
-	Timestamp uint32 //unit seconds
+	Sender    string `json:"sender"`
+	Msg       string `json:"msg"`
+	Extra     string `json:"extra"`
+	MsgIndex  uint32 `json:"msg_index"`
+	Timestamp uint32 `json:"timestamp"` //unit seconds
 }
 type Recall struct {
-	MsgIndex    uint32
-	RecallIndex uint32
+	MsgIndex    uint32 `json:"msg_index"`
+	RecallIndex uint32 `json:"recall_index"`
+}
+type UserAction struct {
+	Target      string `json:"target"`
+	TargetType  string `json:"target_type"`
+	Name        string `json:"name,omitempty"`
+	MsgIndex    uint32 `json:"msg_index,omitempty"`
+	RecallIndex uint32 `json:"recall_index,omitempty"`
+	AckIndex    uint32 `json:"ack_index,omitempty"`
+}
+type GroupAction struct {
+	Member string `json:"member"`
+	Name   string `json:"name,omitempty"`
+	Duty   uint8  `json:"duty,omitempty"`
 }
 
 var setsession *gredis.Script

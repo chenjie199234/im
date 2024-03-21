@@ -40,8 +40,8 @@ func Start() *Service {
 	return &Service{
 		stop: graceful.New(),
 
-		relationDao: relationdao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetRedis("gate_redis"), config.GetMongo("im_mongo")),
-		chatDao:     chatdao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetRedis("gate_redis"), config.GetMongo("im_mongo")),
+		relationDao: relationdao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
+		chatDao:     chatdao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
 	}
 }
 func (s *Service) UpdateSelfName(ctx context.Context, req *api.UpdateSelfNameReq) (*api.UpdateSelfNameResp, error) {
@@ -74,7 +74,7 @@ func (s *Service) UpdateGroupName(ctx context.Context, req *api.UpdateGroupNameR
 		return nil, ecode.ErrPermission
 	}
 	//rate check
-	if e := s.relationDao.RedisUpdateGroupRelationRate(ctx, req.GroupId); e != nil {
+	if e := s.relationDao.RedisUpdateGroupNameRate(ctx, req.GroupId); e != nil {
 		log.Error(ctx, "[UpdateGroupName] rate check failed",
 			log.String("operator", operator),
 			log.String("group_id", req.GroupId),
@@ -98,7 +98,6 @@ func (s *Service) MakeFriend(ctx context.Context, req *api.MakeFriendReq) (*api.
 	if requester == req.UserId {
 		return nil, ecode.ErrReq
 	}
-
 	//check accepter already set self's name
 	if _, e := s.relationDao.GetUserName(ctx, req.UserId); e != nil {
 		log.Error(ctx, "[MakeFriend] check accepter's name failed", log.String("accepter", req.UserId), log.CError(e))
@@ -153,7 +152,6 @@ func (s *Service) MakeFriend(ctx context.Context, req *api.MakeFriendReq) (*api.
 			return nil, ecode.ErrTargetTooManyRelations
 		}
 	}
-
 	if e := s.relationDao.RedisAddMakeFriendRequest(ctx, requester, requestername, req.UserId); e != nil {
 		log.Error(ctx, "[MakeFriend] redis op failed", log.String("requester", requester), log.String("accepter", req.UserId), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
@@ -186,9 +184,28 @@ func (s *Service) AcceptMakeFriend(ctx context.Context, req *api.AcceptMakeFrien
 			return nil, ecode.ErrTargetTooManyRelations
 		}
 	}
-	if e := s.relationDao.AcceptMakeFriend(ctx, accepter, req.UserId); e != nil {
+	if e := s.stop.Add(2); e != nil {
+		if e == graceful.ErrClosing {
+			return nil, ecode.ErrServerClosing
+		}
+		return nil, ecode.ErrBusy
+	}
+	if username, friendname, e := s.relationDao.AcceptMakeFriend(ctx, accepter, req.UserId); e != nil {
 		log.Error(ctx, "[AcceptMakeFriend] dao op failed", log.String("accepter", accepter), log.String("friend_id", req.UserId), log.CError(e))
+		s.stop.DoneOne()
+		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	} else {
+		//push to self
+		util.AddWork(func() {
+			s.pushuser(trace.CloneSpan(ctx), accepter, "userRelationAdd", req.UserId, "user", friendname)
+			s.stop.DoneOne()
+		})
+		//push to friend
+		util.AddWork(func() {
+			s.pushuser(trace.CloneSpan(ctx), req.UserId, "userRelationAdd", accepter, "user", username)
+			s.stop.DoneOne()
+		})
 	}
 	if e := s.relationDao.RedisDelUserRequest(ctx, accepter, req.UserId, "user"); e != nil {
 		log.Error(ctx, "[AcceptMakeFriend] redis op failed", log.String("accepter", accepter), log.String("friend_id", req.UserId), log.CError(e))
@@ -316,9 +333,28 @@ func (s *Service) AcceptGroupInvite(ctx context.Context, req *api.AcceptGroupInv
 			return nil, ecode.ErrGroupTooManyMembers
 		}
 	}
-	if e := s.relationDao.AcceptGroupInvite(ctx, accepter, req.GroupId); e != nil {
+	if e := s.stop.Add(2); e != nil {
+		if e == graceful.ErrClosing {
+			return nil, ecode.ErrServerClosing
+		}
+		return nil, ecode.ErrBusy
+	}
+	if username, groupname, e := s.relationDao.AcceptGroupInvite(ctx, accepter, req.GroupId); e != nil {
 		log.Error(ctx, "[AcceptGroupInvite] dao op failed", log.String("accepter", accepter), log.String("group_id", req.GroupId), log.CError(e))
+		s.stop.DoneOne()
+		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	} else {
+		//push to self
+		util.AddWork(func() {
+			s.pushuser(trace.CloneSpan(ctx), accepter, "userRelationAdd", req.GroupId, "group", groupname)
+			s.stop.DoneOne()
+		})
+		//push to group members
+		go func() {
+			s.pushgroup(trace.CloneSpan(ctx), req.GroupId, "groupJoin", accepter, username, 0)
+			s.stop.DoneOne()
+		}()
 	}
 	if e := s.relationDao.RedisDelUserRequest(ctx, accepter, req.GroupId, "group"); e != nil {
 		log.Error(ctx, "[AcceptGroupInvite] redis op failed", log.String("accepter", accepter), log.String("group_id", req.GroupId), log.CError(e))
@@ -447,13 +483,32 @@ func (s *Service) AcceptGroupApply(ctx context.Context, req *api.AcceptGroupAppl
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
-	if e := s.relationDao.AcceptGroupApply(ctx, req.GroupId, req.UserId); e != nil {
+	if e := s.stop.Add(2); e != nil {
+		if e == graceful.ErrClosing {
+			return nil, ecode.ErrServerClosing
+		}
+		return nil, ecode.ErrBusy
+	}
+	if username, groupname, e := s.relationDao.AcceptGroupApply(ctx, req.GroupId, req.UserId); e != nil {
 		log.Error(ctx, "[AcceptGroupApply] dao op failed",
 			log.String("accepter", accepter),
 			log.String("group_id", req.GroupId),
 			log.String("requester", req.UserId),
 			log.CError(e))
+		s.stop.DoneOne()
+		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	} else {
+		//push to requester
+		util.AddWork(func() {
+			s.pushuser(trace.CloneSpan(ctx), req.UserId, "userRelationAdd", req.GroupId, "group", groupname)
+			s.stop.DoneOne()
+		})
+		//push to group members
+		go func() {
+			s.pushgroup(trace.CloneSpan(ctx), req.GroupId, "groupJoin", req.UserId, username, 0)
+			s.stop.DoneOne()
+		}()
 	}
 	if e := s.relationDao.RedisDelGroupRequest(ctx, req.GroupId, req.UserId); e != nil {
 		log.Error(ctx, "[AcceptGroupApply] redis op failed",
@@ -463,7 +518,7 @@ func (s *Service) AcceptGroupApply(ctx context.Context, req *api.AcceptGroupAppl
 			log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
-	return nil, nil
+	return &api.AcceptGroupApplyResp{}, nil
 }
 func (s *Service) RefuseGroupApply(ctx context.Context, req *api.RefuseGroupApplyReq) (*api.RefuseGroupApplyResp, error) {
 	md := metadata.GetMetadata(ctx)
@@ -513,10 +568,28 @@ func (s *Service) DelFriend(ctx context.Context, req *api.DelFriendReq) (*api.De
 			return &api.DelFriendResp{}, nil
 		}
 	}
+	if e := s.stop.Add(2); e != nil {
+		if e == graceful.ErrClosing {
+			return nil, ecode.ErrServerClosing
+		}
+		return nil, ecode.ErrBusy
+	}
 	if e := s.relationDao.DelFriend(ctx, operator, req.UserId); e != nil {
 		log.Error(ctx, "[DelFriend] dao op failed", log.String("operator", operator), log.String("friend_id", req.UserId), log.CError(e))
+		s.stop.DoneOne()
+		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
+	//push to self
+	util.AddWork(func() {
+		s.pushuser(trace.CloneSpan(ctx), operator, "userRelationDel", req.UserId, "user", "")
+		s.stop.DoneOne()
+	})
+	//push to target
+	util.AddWork(func() {
+		s.pushuser(trace.CloneSpan(ctx), req.UserId, "userRelationDel", operator, "user", "")
+		s.stop.DoneOne()
+	})
 	return &api.DelFriendResp{}, nil
 }
 func (s *Service) LeaveGroup(ctx context.Context, req *api.LeaveGroupReq) (*api.LeaveGroupResp, error) {
@@ -541,13 +614,31 @@ func (s *Service) LeaveGroup(ctx context.Context, req *api.LeaveGroupReq) (*api.
 			return &api.LeaveGroupResp{}, nil
 		}
 	}
+	if e := s.stop.Add(2); e != nil {
+		if e == graceful.ErrClosing {
+			return nil, ecode.ErrServerClosing
+		}
+		return nil, ecode.ErrBusy
+	}
 	if e := s.relationDao.LeaveGroup(ctx, operator, req.GroupId); e != nil {
 		log.Error(ctx, "[LeaveGroup] dao op failed",
 			log.String("operator", operator),
 			log.String("group_id", req.GroupId),
 			log.CError(e))
+		s.stop.DoneOne()
+		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
+	//push to self
+	util.AddWork(func() {
+		s.pushuser(trace.CloneSpan(ctx), operator, "userRelationDel", req.GroupId, "group", "")
+		s.stop.DoneOne()
+	})
+	//push to group members
+	go func() {
+		s.pushgroup(trace.CloneSpan(ctx), req.GroupId, "groupLeave", operator, "", 0)
+		s.stop.DoneOne()
+	}()
 	return &api.LeaveGroupResp{}, nil
 }
 func (s *Service) KickGroup(ctx context.Context, req *api.KickGroupReq) (*api.KickGroupResp, error) {
@@ -589,14 +680,32 @@ func (s *Service) KickGroup(ctx context.Context, req *api.KickGroupReq) (*api.Ki
 	} else if info.Duty <= userinfo.Duty {
 		return nil, ecode.ErrPermission
 	}
+	if e := s.stop.Add(2); e != nil {
+		if e == graceful.ErrClosing {
+			return nil, ecode.ErrServerClosing
+		}
+		return nil, ecode.ErrBusy
+	}
 	if e := s.relationDao.KickGroup(ctx, req.GroupId, req.UserId); e != nil {
 		log.Error(ctx, "[KickGroup] dao op failed",
 			log.String("operator", operator),
 			log.String("group_id", req.GroupId),
 			log.String("user_id", req.UserId),
 			log.CError(e))
+		s.stop.DoneOne()
+		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
+	//push to be kicked member
+	util.AddWork(func() {
+		s.pushuser(trace.CloneSpan(ctx), req.UserId, "userRelationDel", req.GroupId, "group", "")
+		s.stop.DoneOne()
+	})
+	//push to group members
+	go func() {
+		s.pushgroup(trace.CloneSpan(ctx), req.GroupId, "groupKick", req.UserId, "", 0)
+		s.stop.DoneOne()
+	}()
 	return &api.KickGroupResp{}, nil
 }
 func (s *Service) Relations(ctx context.Context, req *api.RelationsReq) (*api.RelationsResp, error) {
@@ -820,23 +929,37 @@ func (s *Service) UpdateUserRelationName(ctx context.Context, req *api.UpdateUse
 func (s *Service) UpdateNameInGroup(ctx context.Context, req *api.UpdateNameInGroupReq) (*api.UpdateNameInGroupResp, error) {
 	md := metadata.GetMetadata(ctx)
 	userid := md["Token-User"]
+	if e := s.stop.Add(1); e != nil {
+		if e == graceful.ErrClosing {
+			return nil, ecode.ErrServerClosing
+		}
+		return nil, ecode.ErrBusy
+	}
 	//rate check
-	if e := s.relationDao.RedisUpdateUserRelationRate(ctx, userid); e != nil {
+	if e := s.relationDao.RedisUpdateUserNameInGroupRate(ctx, userid, req.GroupId); e != nil {
 		log.Error(ctx, "[UpdateNameInGroup] rate check failed",
 			log.String("user_id", userid),
 			log.String("group_id", req.GroupId),
 			log.String("new_name", req.NewName),
 			log.CError(e))
+		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
-	if e := s.relationDao.UpdateNameInGroup(ctx, userid, req.GroupId, req.NewName); e != nil {
+	now, e := s.relationDao.UpdateNameInGroup(ctx, userid, req.GroupId, req.NewName)
+	if e != nil {
 		log.Error(ctx, "[UpdateNameInGroup] dao op failed",
 			log.String("user_id", userid),
 			log.String("group_id", req.GroupId),
 			log.String("new_name", req.NewName),
 			log.CError(e))
+		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
+	//push to group members
+	go func() {
+		s.pushgroup(trace.CloneSpan(ctx), req.GroupId, "groupJoin", userid, now.Name, now.Duty)
+		s.stop.DoneOne()
+	}()
 	return nil, nil
 }
 func (s *Service) UpdateDutyInGroup(ctx context.Context, req *api.UpdateDutyInGroupReq) (*api.UpdateDutyInGroupResp, error) {
@@ -869,25 +992,39 @@ func (s *Service) UpdateDutyInGroup(ctx context.Context, req *api.UpdateDutyInGr
 	if operatorinfo.Duty == 0 || operatorinfo.Duty <= uint8(req.NewDuty) || operatorinfo.Duty <= userinfo.Duty {
 		return nil, ecode.ErrPermission
 	}
+	if e := s.stop.Add(1); e != nil {
+		if e == graceful.ErrClosing {
+			return nil, ecode.ErrServerClosing
+		}
+		return nil, ecode.ErrBusy
+	}
 	//check rate
-	if e := s.relationDao.RedisUpdateGroupRelationRate(ctx, req.GroupId); e != nil {
+	if e := s.relationDao.RedisUpdateUserDutyInGroupRate(ctx, req.GroupId); e != nil {
 		log.Error(ctx, "[UpdateDutyInGroup] rate check failed",
 			log.String("operator", operator),
 			log.String("group_id", req.GroupId),
 			log.String("user_id", req.UserId),
 			log.Uint64("new_duty", uint64(req.NewDuty)),
 			log.CError(e))
+		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
-	if e = s.relationDao.UpdateDutyInGroup(ctx, req.UserId, req.GroupId, uint8(req.NewDuty)); e != nil {
+	now, e := s.relationDao.UpdateDutyInGroup(ctx, req.UserId, req.GroupId, uint8(req.NewDuty))
+	if e != nil {
 		log.Error(ctx, "[UpdateDutyInGroup] dao op failed",
 			log.String("operator", operator),
 			log.String("group_id", req.GroupId),
 			log.String("user_id", req.UserId),
 			log.Uint64("new_duty", uint64(req.NewDuty)),
 			log.CError(e))
+		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
+	//push to group members
+	go func() {
+		s.pushgroup(trace.CloneSpan(ctx), req.GroupId, "groupJoin", req.UserId, now.Name, now.Duty)
+		s.stop.DoneOne()
+	}()
 	return nil, nil
 }
 func (s *Service) GetSelfRequestsCount(ctx context.Context, req *api.GetSelfRequestsCountReq) (*api.GetSelfRequestsCountResp, error) {

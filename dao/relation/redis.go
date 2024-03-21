@@ -9,7 +9,6 @@ import (
 	"github.com/chenjie199234/im/ecode"
 	"github.com/chenjie199234/im/model"
 
-	"github.com/chenjie199234/Corelib/util/common"
 	gredis "github.com/redis/go-redis/v9"
 )
 
@@ -143,7 +142,7 @@ func (d *Dao) RedisAddMakeFriendRequest(ctx context.Context, requester, requeste
 	key1 := "request_user_{" + accepter + "}"
 	key2 := key1 + "_extra"
 	field := "user_" + requester
-	num, e := addRequestScript.Run(ctx, d.imredis, []string{key1, key2}, field, requestername, defaultExpire, defaultRequest).Int()
+	num, e := addRequestScript.Run(ctx, d.redis, []string{key1, key2}, field, requestername, defaultExpire, defaultRequest).Int()
 	if e != nil {
 		return e
 	}
@@ -156,7 +155,7 @@ func (d *Dao) RedisAddGroupInviteRequest(ctx context.Context, groupid, groupname
 	key1 := "request_user_{" + accepter + "}"
 	key2 := key1 + "_extra"
 	field := "group_" + groupid
-	num, e := addRequestScript.Run(ctx, d.imredis, []string{key1, key2}, field, groupname, defaultExpire, defaultRequest).Int()
+	num, e := addRequestScript.Run(ctx, d.redis, []string{key1, key2}, field, groupname, defaultExpire, defaultRequest).Int()
 	if e != nil {
 		return e
 	}
@@ -176,7 +175,7 @@ func (d *Dao) RedisGetUserRequests(ctx context.Context, userid string, cursor ui
 	} else {
 		return nil, ecode.ErrReq
 	}
-	rs, e := getRequestScript.Run(ctx, d.imredis, []string{key1, key2}, args...).Slice()
+	rs, e := getRequestScript.Run(ctx, d.redis, []string{key1, key2}, args...).Slice()
 	if e != nil {
 		return nil, e
 	}
@@ -205,13 +204,13 @@ func (d *Dao) RedisGetUserRequests(ctx context.Context, userid string, cursor ui
 func (d *Dao) RedisCountUserRequests(ctx context.Context, userid string) (uint64, error) {
 	key1 := "request_user_{" + userid + "}"
 	key2 := key1 + "_extra"
-	return countRequestScript.Run(ctx, d.imredis, []string{key1, key2}, defaultExpire).Uint64()
+	return countRequestScript.Run(ctx, d.redis, []string{key1, key2}, defaultExpire).Uint64()
 }
 func (d *Dao) RedisRefreshUserRequest(ctx context.Context, userid, target, targetType string) error {
 	key1 := "request_user_{" + userid + "}"
 	key2 := key1 + "_extra"
 	field := targetType + "_" + target
-	e := refreshRequestScript.Run(ctx, d.imredis, []string{key1, key2}, field, defaultExpire).Err()
+	e := refreshRequestScript.Run(ctx, d.redis, []string{key1, key2}, field, defaultExpire).Err()
 	if e != nil && e == gredis.Nil {
 		e = ecode.ErrRequestNotExist
 	}
@@ -221,7 +220,7 @@ func (d *Dao) RedisDelUserRequest(ctx context.Context, userid, target, targetTyp
 	key1 := "request_user_{" + userid + "}"
 	key2 := key1 + "_extra"
 	field := targetType + "_" + target
-	return delRequestScript.Run(ctx, d.imredis, []string{key1, key2}, field, defaultExpire).Err()
+	return delRequestScript.Run(ctx, d.redis, []string{key1, key2}, field, defaultExpire).Err()
 }
 
 //-----------------------group request--------------------------------------
@@ -229,7 +228,7 @@ func (d *Dao) RedisDelUserRequest(ctx context.Context, userid, target, targetTyp
 func (d *Dao) RedisAddGroupApplyRequest(ctx context.Context, requester, requestername, groupid string) error {
 	key1 := "request_group_{" + groupid + "}"
 	key2 := key1 + "_extra"
-	num, e := addRequestScript.Run(ctx, d.imredis, []string{key1, key2}, requester, requestername, defaultExpire, maxRequest).Int()
+	num, e := addRequestScript.Run(ctx, d.redis, []string{key1, key2}, requester, requestername, defaultExpire, maxRequest).Int()
 	if e != nil {
 		return e
 	}
@@ -249,7 +248,7 @@ func (d *Dao) RedisGetGroupRequests(ctx context.Context, groupid string, cursor 
 	} else {
 		return nil, ecode.ErrReq
 	}
-	rs, e := getRequestScript.Run(ctx, d.imredis, []string{key1, key2}, args...).Slice()
+	rs, e := getRequestScript.Run(ctx, d.redis, []string{key1, key2}, args...).Slice()
 	if e != nil {
 		return nil, e
 	}
@@ -274,12 +273,12 @@ func (d *Dao) RedisGetGroupRequests(ctx context.Context, groupid string, cursor 
 func (d *Dao) RedisCountGroupRequests(ctx context.Context, groupid string) (uint64, error) {
 	key1 := "request_group_{" + groupid + "}"
 	key2 := key1 + "_extra"
-	return countRequestScript.Run(ctx, d.imredis, []string{key1, key2}, defaultExpire).Uint64()
+	return countRequestScript.Run(ctx, d.redis, []string{key1, key2}, defaultExpire).Uint64()
 }
 func (d *Dao) RedisRefreshGroupRequest(ctx context.Context, groupid, userid string) error {
 	key1 := "request_group_{" + groupid + "}"
 	key2 := key1 + "_extra"
-	e := refreshRequestScript.Run(ctx, d.imredis, []string{key1, key2}, userid, defaultExpire).Err()
+	e := refreshRequestScript.Run(ctx, d.redis, []string{key1, key2}, userid, defaultExpire).Err()
 	if e != nil && e == gredis.Nil {
 		e = ecode.ErrRequestNotExist
 	}
@@ -288,7 +287,7 @@ func (d *Dao) RedisRefreshGroupRequest(ctx context.Context, groupid, userid stri
 func (d *Dao) RedisDelGroupRequest(ctx context.Context, groupid, userid string) error {
 	key1 := "request_group_{" + groupid + "}"
 	key2 := key1 + "_extra"
-	return delRequestScript.Run(ctx, d.imredis, []string{key1, key2}, userid, defaultExpire).Err()
+	return delRequestScript.Run(ctx, d.redis, []string{key1, key2}, userid, defaultExpire).Err()
 }
 
 //-----------------------user--------------------------------------
@@ -312,19 +311,19 @@ func (d *Dao) RedisSetUserRelations(ctx context.Context, userid string, targets 
 	if len(targets) > 0 && selfname == "" {
 		return ecode.ErrReq
 	}
-	return setRelationScript.Run(ctx, d.imredis, []string{key}, args...).Err()
+	return setRelationScript.Run(ctx, d.redis, []string{key}, args...).Err()
 }
 
 func (d *Dao) RedisCountUserRelations(ctx context.Context, userid, exceptTarget, exceptTargetType string) (uint64, error) {
 	key := "relation_user_{" + userid + "}"
-	count, e := d.imredis.HLen(ctx, key).Uint64()
+	count, e := d.redis.HLen(ctx, key).Uint64()
 	if e != nil {
 		return 0, e
 	}
 	if count == 0 {
 		return 0, gredis.Nil
 	} else if count == 1 {
-		username, e := d.imredis.HGet(ctx, key, "user_").Result()
+		username, e := d.redis.HGet(ctx, key, "user_").Result()
 		if e != nil {
 			return 0, e
 		}
@@ -332,7 +331,7 @@ func (d *Dao) RedisCountUserRelations(ctx context.Context, userid, exceptTarget,
 			return 0, ecode.ErrUserNotExist
 		}
 	} else if exceptTarget != "" {
-		exist, e := d.imredis.HExists(ctx, key, exceptTargetType+"_"+exceptTarget).Result()
+		exist, e := d.redis.HExists(ctx, key, exceptTargetType+"_"+exceptTarget).Result()
 		if e != nil {
 			return 0, e
 		}
@@ -349,7 +348,7 @@ func (d *Dao) RedisAddUserRelation(ctx context.Context, userid, target, targetTy
 	}
 	key := "relation_user_{" + userid + "}"
 	args := []interface{}{maxExpire, "user_", targetType + "_" + target, targetname}
-	r, e := addRelationScript.Run(ctx, d.imredis, []string{key}, args...).Int()
+	r, e := addRelationScript.Run(ctx, d.redis, []string{key}, args...).Int()
 	if e != nil {
 		return e
 	}
@@ -361,7 +360,7 @@ func (d *Dao) RedisAddUserRelation(ctx context.Context, userid, target, targetTy
 
 func (d *Dao) RedisGetUserRelations(ctx context.Context, userid string) ([]*model.RelationTarget, error) {
 	key := "relation_user_{" + userid + "}"
-	all, e := d.imredis.HGetAll(ctx, key).Result()
+	all, e := d.redis.HGetAll(ctx, key).Result()
 	if e != nil {
 		return nil, e
 	}
@@ -400,7 +399,7 @@ func (d *Dao) RedisGetUserRelations(ctx context.Context, userid string) ([]*mode
 
 func (d *Dao) RedisGetUserRelation(ctx context.Context, userid, target, targetType string) (*model.RelationTarget, error) {
 	key := "relation_user_{" + userid + "}"
-	rs, e := d.imredis.HMGet(ctx, key, "user_", targetType+"_"+target).Result()
+	rs, e := d.redis.HMGet(ctx, key, "user_", targetType+"_"+target).Result()
 	if e != nil {
 		return nil, e
 	}
@@ -432,13 +431,13 @@ func (d *Dao) RedisGetUserRelation(ctx context.Context, userid, target, targetTy
 
 func (d *Dao) RedisDelUserRelations(ctx context.Context, userid string) error {
 	key := "relation_user_{" + userid + "}"
-	return d.imredis.Del(ctx, key).Err()
+	return d.redis.Del(ctx, key).Err()
 }
 
 func (d *Dao) RedisDelUserRelation(ctx context.Context, userid, target, targetType string) error {
 	key := "relation_user_{" + userid + "}"
 	field := targetType + "_" + target
-	return d.imredis.HDel(ctx, key, field).Err()
+	return d.redis.HDel(ctx, key, field).Err()
 }
 
 //-----------------------group--------------------------------------
@@ -462,19 +461,19 @@ func (d *Dao) RedisSetGroupMembers(ctx context.Context, groupid string, users []
 	if len(users) > 0 && groupname == "" {
 		return ecode.ErrReq
 	}
-	return setRelationScript.Run(ctx, d.imredis, []string{key}, args...).Err()
+	return setRelationScript.Run(ctx, d.redis, []string{key}, args...).Err()
 }
 
 func (d *Dao) RedisCountGroupMembers(ctx context.Context, groupid, exceptMember string) (uint64, error) {
 	key := "relation_group_{" + groupid + "}"
-	count, e := d.imredis.HLen(ctx, key).Uint64()
+	count, e := d.redis.HLen(ctx, key).Uint64()
 	if e != nil {
 		return 0, e
 	}
 	if count == 0 {
 		return 0, gredis.Nil
 	} else if count == 1 {
-		groupname, e := d.imredis.HGet(ctx, key, "").Result()
+		groupname, e := d.redis.HGet(ctx, key, "").Result()
 		if e != nil {
 			return 0, e
 		}
@@ -482,7 +481,7 @@ func (d *Dao) RedisCountGroupMembers(ctx context.Context, groupid, exceptMember 
 			return 0, ecode.ErrGroupNotExist
 		}
 	} else if exceptMember != "" {
-		exist, e := d.imredis.HExists(ctx, key, exceptMember).Result()
+		exist, e := d.redis.HExists(ctx, key, exceptMember).Result()
 		if e != nil {
 			return 0, e
 		}
@@ -499,7 +498,7 @@ func (d *Dao) RedisAddGroupMember(ctx context.Context, groupid, userid, username
 	}
 	key := "relation_group_{" + groupid + "}"
 	args := []interface{}{maxExpire, "", userid, strconv.Itoa(int(userduty)) + "_" + username}
-	r, e := addRelationScript.Run(ctx, d.imredis, []string{key}, args...).Int()
+	r, e := addRelationScript.Run(ctx, d.redis, []string{key}, args...).Int()
 	if e != nil {
 		return e
 	}
@@ -511,7 +510,7 @@ func (d *Dao) RedisAddGroupMember(ctx context.Context, groupid, userid, username
 
 func (d *Dao) RedisGetGroupMembers(ctx context.Context, groupid string) ([]*model.RelationTarget, error) {
 	key := "relation_group_{" + groupid + "}"
-	all, e := d.imredis.HGetAll(ctx, key).Result()
+	all, e := d.redis.HGetAll(ctx, key).Result()
 	if e != nil {
 		return nil, e
 	}
@@ -543,7 +542,7 @@ func (d *Dao) RedisGetGroupMembers(ctx context.Context, groupid string) ([]*mode
 
 func (d *Dao) RedisGetGroupMember(ctx context.Context, groupid, userid string) (*model.RelationTarget, error) {
 	key := "relation_group_{" + groupid + "}"
-	rs, e := d.imredis.HMGet(ctx, key, "", userid).Result()
+	rs, e := d.redis.HMGet(ctx, key, "", userid).Result()
 	if e != nil {
 		return nil, e
 	}
@@ -579,51 +578,10 @@ func (d *Dao) RedisGetGroupMember(ctx context.Context, groupid, userid string) (
 
 func (d *Dao) RedisDelGroupMembers(ctx context.Context, groupid string) error {
 	key := "relation_group_{" + groupid + "}"
-	return d.imredis.Del(ctx, key).Err()
+	return d.redis.Del(ctx, key).Err()
 }
 
 func (d *Dao) RedisDelGroupMember(ctx context.Context, groupid, userid string) error {
 	key := "relation_group_{" + groupid + "}"
-	return d.imredis.HDel(ctx, key, userid).Err()
-}
-
-// -------------------------------------------gate redis-------------------------------------
-func (d *Dao) GetSession(ctx context.Context, userid string) (*model.IMSession, error) {
-	key := "raw_user_{" + userid + "}"
-	rs, e := d.gateredis.HGetAll(ctx, key).Result()
-	if e == gredis.Nil {
-		e = ecode.ErrSession
-	}
-	if e != nil {
-		return nil, e
-	}
-	remoteaddr, ok := rs["remote_addr"]
-	if !ok {
-		return nil, ecode.ErrCacheDataBroken
-	}
-	realip, ok := rs["real_ip"]
-	if !ok {
-		return nil, ecode.ErrCacheDataBroken
-	}
-	gate, ok := rs["gate"]
-	if !ok {
-		return nil, ecode.ErrCacheDataBroken
-	}
-	str, ok := rs["netlag"]
-	if !ok {
-		return nil, ecode.ErrCacheDataBroken
-	}
-	netlag, e := strconv.ParseUint(str, 10, 64)
-	if e != nil {
-		return nil, ecode.ErrCacheDataBroken
-	}
-	return &model.IMSession{RemoteAddr: remoteaddr, RealIP: realip, Gate: gate, Netlag: netlag}, nil
-}
-
-// data can't be nil or empty
-func (d *Dao) Unicast(ctx context.Context, rawname, userid string, data []byte) error {
-	if len(data) == 0 {
-		return nil
-	}
-	return d.gateredis.PubUnicast(ctx, rawname, 32, userid, userid+"_"+common.BTS(data))
+	return d.redis.HDel(ctx, key, userid).Err()
 }

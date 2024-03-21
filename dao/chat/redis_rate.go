@@ -9,7 +9,7 @@ import (
 
 func (d *Dao) RedisSendRecallRate(ctx context.Context, userid string) error {
 	//1 seconds do once
-	status, e := d.imredis.SetNX(ctx, "send_recall_rate_{"+userid+"}", 1, time.Second).Result()
+	status, e := d.redis.SetNX(ctx, "send_recall_rate_{"+userid+"}", 1, time.Second).Result()
 	if e != nil {
 		return e
 	}
@@ -21,7 +21,7 @@ func (d *Dao) RedisSendRecallRate(ctx context.Context, userid string) error {
 func (d *Dao) RedisPullRate(ctx context.Context, userid, chatkey string) error {
 	//5 seconds do once for per chatkey
 	//1 seconds do twice for all chatkey
-	status, e := d.imredis.RateLimit(ctx, map[string][2]uint64{
+	status, e := d.redis.RateLimit(ctx, map[string][2]uint64{
 		"pull_rate_{" + userid + "}_" + chatkey: {1, 5},
 		"pull_rate_{" + userid + "}":            {2, 1},
 	})

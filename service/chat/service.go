@@ -38,27 +38,15 @@ func Start() *Service {
 	s := &Service{
 		stop: graceful.New(),
 
-		chatDao:     chatdao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetRedis("gate_redis"), config.GetMongo("im_mongo")),
-		relationDao: relationDao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetRedis("gate_redis"), config.GetMongo("im_mongo")),
+		chatDao:     chatdao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
+		relationDao: relationDao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
 	}
 	return s
 }
 
 func (s *Service) Send(ctx context.Context, req *api.SendReq) (*api.SendResp, error) {
-	if e := s.stop.Add(1); e != nil {
-		if e == graceful.ErrClosing {
-			return nil, ecode.ErrServerClosing
-		}
-		return nil, ecode.ErrBusy
-	}
 	md := metadata.GetMetadata(ctx)
 	sender := md["Token-User"]
-	//check the rate limit
-	if e := s.chatDao.RedisSendRecallRate(ctx, sender); e != nil {
-		log.Error(ctx, "[Send] rate check failed", log.String("sender", sender), log.CError(e))
-		s.stop.DoneOne()
-		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
-	}
 	//check the relation in target's view
 	if req.TargetType == "user" {
 		if _, e := s.relationDao.GetUserRelation(ctx, req.Target, sender, "user"); e != nil {
@@ -67,7 +55,6 @@ func (s *Service) Send(ctx context.Context, req *api.SendReq) (*api.SendResp, er
 				log.String("target", req.Target),
 				log.String("target_type", req.TargetType),
 				log.CError(e))
-			s.stop.DoneOne()
 			return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 		}
 	} else if _, e := s.relationDao.GetGroupMember(ctx, req.Target, sender); e != nil {
@@ -76,6 +63,17 @@ func (s *Service) Send(ctx context.Context, req *api.SendReq) (*api.SendResp, er
 			log.String("target", req.Target),
 			log.String("target_type", req.TargetType),
 			log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	if e := s.stop.Add(1); e != nil {
+		if e == graceful.ErrClosing {
+			return nil, ecode.ErrServerClosing
+		}
+		return nil, ecode.ErrBusy
+	}
+	//check the rate limit
+	if e := s.chatDao.RedisSendRecallRate(ctx, sender); e != nil {
+		log.Error(ctx, "[Send] rate check failed", log.String("sender", sender), log.CError(e))
 		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
@@ -114,9 +112,7 @@ func (s *Service) pushsend(ctx context.Context, msg *model.MsgInfo, target, targ
 	})
 	single := func(userid string) {
 		if userid != msg.Sender {
-			if session, e := s.chatDao.GetSession(ctx, userid); e != nil && e != ecode.ErrSession {
-				log.Error(ctx, "[PushSend] get user gate session failed", log.String("user_id", userid), log.CError(e))
-			} else if e := s.chatDao.Unicast(ctx, session.Gate, userid, pushmsg); e != nil {
+			if e := util.Unicast(ctx, userid, pushmsg); e != nil && e != ecode.ErrSession {
 				log.Error(ctx, "[PushSend] push mq failed", log.String("user_id", userid), log.String("chat_key", msg.ChatKey), log.CError(e))
 			}
 		}
@@ -147,26 +143,17 @@ func (s *Service) pushsend(ctx context.Context, msg *model.MsgInfo, target, targ
 		wg.Add(len(members))
 		for _, v := range members {
 			member := v
+			if member.Target == "" {
+				continue
+			}
 			util.AddWork(func() { single(member.Target); wg.Done() })
 		}
 		wg.Wait()
 	}
 }
 func (s *Service) Recall(ctx context.Context, req *api.RecallReq) (*api.RecallResp, error) {
-	if e := s.stop.Add(1); e != nil {
-		if e == graceful.ErrClosing {
-			return nil, ecode.ErrServerClosing
-		}
-		return nil, ecode.ErrBusy
-	}
 	md := metadata.GetMetadata(ctx)
 	recaller := md["Token-User"]
-	//check the rate limit
-	if e := s.chatDao.RedisSendRecallRate(ctx, recaller); e != nil {
-		log.Error(ctx, "[Recall] rate check failed", log.String("recaller", recaller), log.CError(e))
-		s.stop.DoneOne()
-		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
-	}
 	//check the relation in self's view
 	if _, e := s.relationDao.GetUserRelation(ctx, recaller, req.Target, req.TargetType); e != nil {
 		log.Error(ctx, "[Recall] check relation failed",
@@ -174,6 +161,17 @@ func (s *Service) Recall(ctx context.Context, req *api.RecallReq) (*api.RecallRe
 			log.String("target", req.Target),
 			log.String("target_type", req.TargetType),
 			log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	if e := s.stop.Add(1); e != nil {
+		if e == graceful.ErrClosing {
+			return nil, ecode.ErrServerClosing
+		}
+		return nil, ecode.ErrBusy
+	}
+	//check the rate limit
+	if e := s.chatDao.RedisSendRecallRate(ctx, recaller); e != nil {
+		log.Error(ctx, "[Recall] rate check failed", log.String("recaller", recaller), log.CError(e))
 		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
@@ -202,9 +200,7 @@ func (s *Service) pushrecall(ctx context.Context, recallindex, msgindex uint32, 
 	})
 	single := func(userid string) {
 		if userid != recaller {
-			if session, e := s.chatDao.GetSession(ctx, userid); e != nil && e != ecode.ErrSession {
-				log.Error(ctx, "[PushRecall] get user gate session failed", log.String("user_id", userid), log.CError(e))
-			} else if e := s.chatDao.Unicast(ctx, session.Gate, userid, pushmsg); e != nil {
+			if e := util.Unicast(ctx, userid, pushmsg); e != nil && e != ecode.ErrSession {
 				log.Error(ctx, "[PushRecall] push mq failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
 			}
 		}
@@ -229,6 +225,9 @@ func (s *Service) pushrecall(ctx context.Context, recallindex, msgindex uint32, 
 		wg.Add(len(members))
 		for _, v := range members {
 			member := v
+			if member.Target == "" {
+				continue
+			}
 			util.AddWork(func() { single(member.Target); wg.Done() })
 		}
 		wg.Wait()
@@ -275,12 +274,6 @@ func (s *Service) Ack(ctx context.Context, req *api.AckReq) (*api.AckResp, error
 func (s *Service) Pull(ctx context.Context, req *api.PullReq) (*api.PullResp, error) {
 	md := metadata.GetMetadata(ctx)
 	puller := md["Token-User"]
-	chatkey := util.FormChatKey(puller, req.Target, req.TargetType)
-	//check the rate limit
-	if e := s.chatDao.RedisPullRate(ctx, puller, chatkey); e != nil {
-		log.Error(ctx, "[Pull] rate check failed", log.String("puller", puller), log.CError(e))
-		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
-	}
 	//check the relation in self's view
 	if _, e := s.relationDao.GetUserRelation(ctx, puller, req.Target, req.TargetType); e != nil {
 		log.Error(ctx, "[Pull] check relation failed",
@@ -288,6 +281,12 @@ func (s *Service) Pull(ctx context.Context, req *api.PullReq) (*api.PullResp, er
 			log.String("target", req.Target),
 			log.String("target_type", req.TargetType),
 			log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	chatkey := util.FormChatKey(puller, req.Target, req.TargetType)
+	//check the rate limit
+	if e := s.chatDao.RedisPullRate(ctx, puller, chatkey); e != nil {
+		log.Error(ctx, "[Pull] rate check failed", log.String("puller", puller), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	resp := &api.PullResp{

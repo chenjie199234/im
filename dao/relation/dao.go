@@ -18,20 +18,19 @@ import (
 
 // Dao this is a data operation layer to operate relation service's data
 type Dao struct {
-	mysql              *cmysql.Client
-	imredis, gateredis *credis.Client
-	mongo              *cmongo.Client
+	mysql *cmysql.Client
+	redis *credis.Client
+	mongo *cmongo.Client
 }
 
 // NewDao Dao is only a data operation layer
 // don't write business logic in this package
 // business logic should be written in service package
-func NewDao(mysql *cmysql.Client, imredis, gateredis *credis.Client, mongo *cmongo.Client) *Dao {
+func NewDao(mysql *cmysql.Client, redis *credis.Client, mongo *cmongo.Client) *Dao {
 	return &Dao{
-		mysql:     mysql,
-		imredis:   imredis,
-		gateredis: gateredis,
-		mongo:     mongo,
+		mysql: mysql,
+		redis: redis,
+		mongo: mongo,
 	}
 }
 
@@ -63,7 +62,7 @@ func (d *Dao) UpdateUserRelationName(ctx context.Context, userid, target, target
 	}
 	return nil
 }
-func (d *Dao) UpdateNameInGroup(ctx context.Context, userid, groupid, newname string) error {
+func (d *Dao) UpdateNameInGroup(ctx context.Context, userid, groupid, newname string) (*model.RelationTarget, error) {
 	now, e := d.MongoUpdateNameInGroup(ctx, userid, groupid, newname)
 	if e != nil {
 		log.Error(ctx, "[dao.UpdateNameInGroup] db op failed",
@@ -71,7 +70,7 @@ func (d *Dao) UpdateNameInGroup(ctx context.Context, userid, groupid, newname st
 			log.String("group_id", groupid),
 			log.String("name", newname),
 			log.CError(e))
-		return e
+		return nil, e
 	}
 	if e = d.RedisAddGroupMember(ctx, groupid, userid, now.Name, now.Duty); e != nil && e != gredis.Nil {
 		if e == ecode.ErrGroupNotExist {
@@ -83,64 +82,62 @@ func (d *Dao) UpdateNameInGroup(ctx context.Context, userid, groupid, newname st
 				log.String("group_id", groupid),
 				log.String("name", newname),
 				log.CError(e))
-			return e
+			return nil, e
 		}
 	}
-	return nil
+	return now, nil
 }
-func (d *Dao) AcceptMakeFriend(ctx context.Context, userid, friendid string) error {
-	username, friendname, e := d.MongoAcceptMakeFriend(ctx, userid, friendid)
-	if e != nil {
+func (d *Dao) AcceptMakeFriend(ctx context.Context, userid, friendid string) (username, friendname string, e error) {
+	if username, friendname, e = d.MongoAcceptMakeFriend(ctx, userid, friendid); e != nil {
 		log.Error(ctx, "[dao.AcceptMakeFriend] db op failed", log.String("user_id", userid), log.String("friend_id", friendid), log.CError(e))
-		return e
+		return
 	}
 	// friend's relation should be add first,because the user will retry
-	if e := d.RedisAddUserRelation(ctx, friendid, userid, "user", username); e != nil && e != gredis.Nil {
+	if e = d.RedisAddUserRelation(ctx, friendid, userid, "user", username); e != nil && e != gredis.Nil {
 		if e == ecode.ErrUserNotExist {
 			e = d.RedisDelUserRelations(ctx, friendid)
 		}
 		if e != nil {
 			log.Error(ctx, "[dao.AcceptMakeFriend] redis op failed", log.String("user_id", userid), log.String("friend_id", friendid), log.CError(e))
-			return e
+			return
 		}
 	}
-	if e := d.RedisAddUserRelation(ctx, userid, friendid, "user", friendname); e != nil && e != gredis.Nil {
+	if e = d.RedisAddUserRelation(ctx, userid, friendid, "user", friendname); e != nil && e != gredis.Nil {
 		if e == ecode.ErrUserNotExist {
 			e = d.RedisDelUserRelations(ctx, userid)
 		}
 		if e != nil {
 			log.Error(ctx, "[dao.AcceptMakeFriend] redis op failed", log.String("user_id", userid), log.String("friend_id", friendid), log.CError(e))
-			return e
+			return
 		}
 	}
-	return nil
+	return
 }
-func (d *Dao) AcceptGroupInvite(ctx context.Context, userid, groupid string) error {
-	username, groupname, e := d.MongoAcceptGroupInvite(ctx, userid, groupid)
-	if e != nil {
+func (d *Dao) AcceptGroupInvite(ctx context.Context, userid, groupid string) (username, groupname string, e error) {
+	if username, groupname, e = d.MongoAcceptGroupInvite(ctx, userid, groupid); e != nil {
 		log.Error(ctx, "[dao.AcceptGroupInvite] db op failed", log.String("user_id", userid), log.String("group_id", groupid), log.CError(e))
-		return e
+		return
 	}
 	// group's relation should be add first,because the user will retry
-	if e := d.RedisAddGroupMember(ctx, groupid, userid, username, 0); e != nil && e != gredis.Nil {
+	if e = d.RedisAddGroupMember(ctx, groupid, userid, username, 0); e != nil && e != gredis.Nil {
 		if e == ecode.ErrGroupNotExist {
 			e = d.RedisDelGroupMembers(ctx, groupid)
 		}
 		if e != nil {
 			log.Error(ctx, "[dao.AcceptGroupInvite] redis op failed", log.String("user_id", userid), log.String("group_id", groupid), log.CError(e))
-			return e
+			return
 		}
 	}
-	if e := d.RedisAddUserRelation(ctx, userid, groupid, "group", groupname); e != nil && e != gredis.Nil {
+	if e = d.RedisAddUserRelation(ctx, userid, groupid, "group", groupname); e != nil && e != gredis.Nil {
 		if e == ecode.ErrUserNotExist {
 			e = d.RedisDelUserRelations(ctx, userid)
 		}
 		if e != nil {
 			log.Error(ctx, "[dao.AcceptGroupInvite] redis op failed", log.String("user_id", userid), log.String("group_id", groupid), log.CError(e))
-			return e
+			return
 		}
 	}
-	return nil
+	return
 }
 func (d *Dao) DelFriend(ctx context.Context, userid, friendid string) error {
 	if e := d.MongoDelFriend(ctx, userid, friendid); e != nil {
@@ -342,7 +339,7 @@ func (d *Dao) GetUserRelation(ctx context.Context, userid, target, targetType st
 }
 
 // ------------------------------------------group-----------------------------------
-func (d *Dao) UpdateDutyInGroup(ctx context.Context, userid, groupid string, newduty uint8) error {
+func (d *Dao) UpdateDutyInGroup(ctx context.Context, userid, groupid string, newduty uint8) (*model.RelationTarget, error) {
 	now, e := d.MongoUpdateDutyInGroup(ctx, userid, groupid, newduty)
 	if e != nil {
 		log.Error(ctx, "[dao.UpdateDutyInGroup] db op failed",
@@ -350,7 +347,7 @@ func (d *Dao) UpdateDutyInGroup(ctx context.Context, userid, groupid string, new
 			log.String("group_id", groupid),
 			log.Uint64("duty", uint64(newduty)),
 			log.CError(e))
-		return e
+		return nil, e
 	}
 	if e = d.RedisAddGroupMember(ctx, groupid, userid, now.Name, now.Duty); e != nil && e != gredis.Nil {
 		if e == ecode.ErrGroupNotExist {
@@ -362,37 +359,36 @@ func (d *Dao) UpdateDutyInGroup(ctx context.Context, userid, groupid string, new
 				log.String("group_id", groupid),
 				log.Uint64("duty", uint64(newduty)),
 				log.CError(e))
-			return e
+			return nil, e
 		}
 	}
-	return nil
+	return now, nil
 }
-func (d *Dao) AcceptGroupApply(ctx context.Context, groupid, userid string) error {
-	username, groupname, e := d.MongoAcceptGroupApply(ctx, groupid, userid)
-	if e != nil {
+func (d *Dao) AcceptGroupApply(ctx context.Context, groupid, userid string) (username, groupname string, e error) {
+	if username, groupname, e = d.MongoAcceptGroupApply(ctx, groupid, userid); e != nil {
 		log.Error(ctx, "[dao.AcceptGroupApply] db op failed", log.String("group_id", groupid), log.String("user_id", userid), log.CError(e))
-		return e
+		return
 	}
 	// user's relation should be deleted first,because the group's admin will retry
-	if e := d.RedisAddUserRelation(ctx, userid, groupid, "group", groupname); e != nil && e != gredis.Nil {
+	if e = d.RedisAddUserRelation(ctx, userid, groupid, "group", groupname); e != nil && e != gredis.Nil {
 		if e == ecode.ErrUserNotExist {
 			e = d.RedisDelUserRelations(ctx, userid)
 		}
 		if e != nil {
 			log.Error(ctx, "[dao.AcceptGroupApply] redis op failed", log.String("group_id", groupid), log.String("user_id", userid), log.CError(e))
-			return e
+			return
 		}
 	}
-	if e := d.RedisAddGroupMember(ctx, groupid, userid, username, 0); e != nil && e != gredis.Nil {
+	if e = d.RedisAddGroupMember(ctx, groupid, userid, username, 0); e != nil && e != gredis.Nil {
 		if e == ecode.ErrGroupNotExist {
 			e = d.RedisDelGroupMembers(ctx, groupid)
 		}
 		if e != nil {
 			log.Error(ctx, "[dao.AcceptGroupApply] redis op failed", log.String("group_id", groupid), log.String("user_id", userid), log.CError(e))
-			return e
+			return
 		}
 	}
-	return nil
+	return
 }
 func (d *Dao) KickGroup(ctx context.Context, groupid, userid string) error {
 	if e := d.MongoKickGroup(ctx, userid, groupid); e != nil {
