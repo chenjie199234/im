@@ -2,9 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
-	"math"
-	"sync"
 	"time"
 
 	"github.com/chenjie199234/im/api"
@@ -77,15 +74,14 @@ func (s *Service) Send(ctx context.Context, req *api.SendReq) (*api.SendResp, er
 		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
-	chatkey := util.FormChatKey(sender, req.Target, req.TargetType)
 	msg := &model.MsgInfo{
-		ChatKey: chatkey,
+		ChatKey: util.FormChatKey(sender, req.Target, req.TargetType),
 		Sender:  sender,
 		Msg:     req.Msg,
 		Extra:   req.Extra,
 	}
 	if e := s.chatDao.MongoSend(ctx, msg); e != nil {
-		log.Error(ctx, "[Send] db op failed", log.String("sender", sender), log.String("chat_key", chatkey), log.CError(e))
+		log.Error(ctx, "[Send] db op failed", log.String("sender", sender), log.String("chat_key", msg.ChatKey), log.CError(e))
 		s.stop.DoneOne()
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
@@ -98,58 +94,6 @@ func (s *Service) Send(ctx context.Context, req *api.SendReq) (*api.SendResp, er
 		MsgIndex:  msg.MsgIndex,
 		Timestamp: uint32(msg.ID.Timestamp().Unix()),
 	}, nil
-}
-func (s *Service) pushsend(ctx context.Context, msg *model.MsgInfo, target, targetType string) {
-	pushmsg, _ := json.Marshal(&util.MQ{
-		Type: "msg",
-		Content: &util.Msg{
-			Sender:    msg.Sender,
-			Msg:       msg.Msg,
-			Extra:     msg.Extra,
-			MsgIndex:  msg.MsgIndex,
-			Timestamp: uint32(msg.ID.Timestamp().Unix()),
-		},
-	})
-	single := func(userid string) {
-		if userid != msg.Sender {
-			if e := util.Unicast(ctx, userid, pushmsg); e != nil && e != ecode.ErrSession {
-				log.Error(ctx, "[PushSend] push mq failed", log.String("user_id", userid), log.String("chat_key", msg.ChatKey), log.CError(e))
-			}
-		}
-		var e error
-		if userid == msg.Sender {
-			e = s.chatDao.RedisSetIndex(ctx, userid, msg.ChatKey, msg.MsgIndex, math.MaxUint32, msg.MsgIndex)
-		} else {
-			e = s.chatDao.RedisSetIndex(ctx, userid, msg.ChatKey, msg.MsgIndex, math.MaxUint32, math.MaxUint32)
-		}
-		if e != nil {
-			time.Sleep(time.Millisecond * 10)
-			if e = s.chatDao.RedisDelIndex(ctx, userid, msg.ChatKey); e != nil {
-				log.Error(ctx, "[PushSend] update index failed", log.String("user_id", userid), log.String("chat_key", msg.ChatKey), log.CError(e))
-			}
-		}
-	}
-	if targetType == "user" {
-		wg := &sync.WaitGroup{}
-		wg.Add(2)
-		util.AddWork(func() { single(msg.Sender); wg.Done() })
-		util.AddWork(func() { single(target); wg.Done() })
-		wg.Wait()
-	} else if members, e := s.relationDao.GetGroupMembers(ctx, target); e != nil {
-		log.Error(ctx, "[PushSend] get group members failed", log.String("group_id", target), log.CError(e))
-		return
-	} else {
-		wg := &sync.WaitGroup{}
-		wg.Add(len(members))
-		for _, v := range members {
-			member := v
-			if member.Target == "" {
-				continue
-			}
-			util.AddWork(func() { single(member.Target); wg.Done() })
-		}
-		wg.Wait()
-	}
 }
 func (s *Service) Recall(ctx context.Context, req *api.RecallReq) (*api.RecallResp, error) {
 	md := metadata.GetMetadata(ctx)
@@ -192,46 +136,6 @@ func (s *Service) Recall(ctx context.Context, req *api.RecallReq) (*api.RecallRe
 		s.stop.DoneOne()
 	}()
 	return &api.RecallResp{RecallIndex: recallindex}, nil
-}
-func (s *Service) pushrecall(ctx context.Context, recallindex, msgindex uint32, chatkey, recaller, target, targetType string) {
-	pushmsg, _ := json.Marshal(&util.MQ{
-		Type:    "recall",
-		Content: &util.Recall{MsgIndex: msgindex, RecallIndex: recallindex},
-	})
-	single := func(userid string) {
-		if userid != recaller {
-			if e := util.Unicast(ctx, userid, pushmsg); e != nil && e != ecode.ErrSession {
-				log.Error(ctx, "[PushRecall] push mq failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
-			}
-		}
-		if e := s.chatDao.RedisSetIndex(ctx, userid, chatkey, math.MaxUint32, recallindex, math.MaxUint32); e != nil {
-			time.Sleep(time.Millisecond * 10)
-			if e = s.chatDao.RedisDelIndex(ctx, userid, chatkey); e != nil {
-				log.Error(ctx, "[PushRecall] redis op failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
-			}
-		}
-	}
-	if targetType == "user" {
-		wg := &sync.WaitGroup{}
-		wg.Add(2)
-		util.AddWork(func() { single(recaller); wg.Done() })
-		util.AddWork(func() { single(target); wg.Done() })
-		wg.Wait()
-	} else if members, e := s.relationDao.GetGroupMembers(ctx, target); e != nil {
-		log.Error(ctx, "[PushRecall] get group members failed", log.String("group_id", target), log.CError(e))
-		return
-	} else {
-		wg := &sync.WaitGroup{}
-		wg.Add(len(members))
-		for _, v := range members {
-			member := v
-			if member.Target == "" {
-				continue
-			}
-			util.AddWork(func() { single(member.Target); wg.Done() })
-		}
-		wg.Wait()
-	}
 }
 func (s *Service) Ack(ctx context.Context, req *api.AckReq) (*api.AckResp, error) {
 	md := metadata.GetMetadata(ctx)
