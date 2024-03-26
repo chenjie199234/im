@@ -231,12 +231,6 @@ func (s *Service) GroupInvite(ctx context.Context, req *api.GroupInviteReq) (*ap
 	if inviter == req.UserId {
 		return nil, ecode.ErrReq
 	}
-	//check user already set self's name
-	if _, e := s.relationDao.GetUserName(ctx, req.UserId); e != nil {
-		log.Error(ctx, "[GroupInvite] check user's name failed", log.String("user_id", req.UserId), log.CError(e))
-		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
-	}
-	//check group name
 	//check inviter permission
 	if info, e := s.relationDao.GetGroupMember(ctx, req.GroupId, inviter); e != nil {
 		if e == ecode.ErrGroupMemberNotExist {
@@ -246,6 +240,11 @@ func (s *Service) GroupInvite(ctx context.Context, req *api.GroupInviteReq) (*ap
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	} else if info.Duty == 0 {
 		return nil, ecode.ErrPermission
+	}
+	//check user already set self's name
+	if _, e := s.relationDao.GetUserName(ctx, req.UserId); e != nil {
+		log.Error(ctx, "[GroupInvite] check user's name failed", log.String("user_id", req.UserId), log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
 	//check current relation in user's view
 	if _, e := s.relationDao.GetUserRelation(ctx, req.UserId, req.GroupId, "group"); e != nil && e != ecode.ErrNotInGroup {
@@ -293,6 +292,7 @@ func (s *Service) GroupInvite(ctx context.Context, req *api.GroupInviteReq) (*ap
 			}
 		}
 	}
+	//check group name
 	groupname, e := s.relationDao.GetGroupName(ctx, req.GroupId)
 	if e != nil {
 		log.Error(ctx, "[GroupInvite] get group's name failed", log.String("group_id", req.GroupId), log.CError(e))
