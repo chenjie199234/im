@@ -2077,8 +2077,8 @@ type GetSelfRequestsReq struct {
 	unknownFields protoimpl.UnknownFields
 
 	// the response will include this cursor
-	Cursor    uint64 `protobuf:"varint,1,opt,name=cursor,proto3" json:"cursor,omitempty"`      //timestamp in microseconds
-	Direction string `protobuf:"bytes,2,opt,name=direction,proto3" json:"direction,omitempty"` //
+	Cursor    uint64 `protobuf:"varint,1,opt,name=cursor,proto3" json:"cursor,omitempty"` //timestamp in microseconds
+	Direction string `protobuf:"bytes,2,opt,name=direction,proto3" json:"direction,omitempty"`
 }
 
 func (x *GetSelfRequestsReq) Reset() {
@@ -2275,8 +2275,8 @@ type GetGroupRequestsReq struct {
 
 	// the response will include this cursor
 	GroupId   string `protobuf:"bytes,1,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
-	Cursor    uint64 `protobuf:"varint,2,opt,name=cursor,proto3" json:"cursor,omitempty"`      //timestamp in microseconds
-	Direction string `protobuf:"bytes,3,opt,name=direction,proto3" json:"direction,omitempty"` //
+	Cursor    uint64 `protobuf:"varint,2,opt,name=cursor,proto3" json:"cursor,omitempty"` //timestamp in microseconds
+	Direction string `protobuf:"bytes,3,opt,name=direction,proto3" json:"direction,omitempty"`
 }
 
 func (x *GetGroupRequestsReq) Reset() {

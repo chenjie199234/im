@@ -602,7 +602,6 @@ Content-Type: application/json
 	//timestamp in microseconds
 	//uint64 use string to prevent overflow
 	"cursor":"0",
-	//
 	//value must in ["after","before"]
 	"direction":"str"
 }
@@ -674,7 +673,6 @@ Content-Type: application/json
 	//timestamp in microseconds
 	//uint64 use string to prevent overflow
 	"cursor":"0",
-	//
 	//value must in ["after","before"]
 	"direction":"str"
 }

@@ -93,7 +93,7 @@ export class GetGroupRequestsReq{
 	group_id: string = ''
 	//Warning!!!Type is uint64,be careful of sign(+)
 	cursor: bigint = BigInt(0)//timestamp in microseconds
-	direction: string = ''//
+	direction: string = ''
 	toJSON(){
 		let tmp = {}
 		if(this.group_id){
@@ -144,7 +144,7 @@ export class GetSelfRequestsReq{
 	//the response will include this cursor
 	//Warning!!!Type is uint64,be careful of sign(+)
 	cursor: bigint = BigInt(0)//timestamp in microseconds
-	direction: string = ''//
+	direction: string = ''
 	toJSON(){
 		let tmp = {}
 		if(this.cursor){

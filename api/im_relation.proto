@@ -274,7 +274,7 @@ message get_self_requests_count_resp{
 message get_self_requests_req{
 	//the response will include this cursor
 	uint64 cursor=1;//timestamp in microseconds
-	string direction=2[(pbex.string_bytes_in)="after",(pbex.string_bytes_in)="before"];//
+	string direction=2[(pbex.string_bytes_in)="after",(pbex.string_bytes_in)="before"];
 }
 message get_self_requests_resp{
 	repeated requester_info requesters=1;
@@ -289,7 +289,7 @@ message get_group_requests_req{
 	//the response will include this cursor
 	string group_id=1[(pbex.string_bytes_len_eq)=24];
 	uint64 cursor=2;//timestamp in microseconds
-	string direction=3[(pbex.string_bytes_in)="after",(pbex.string_bytes_in)="before"];//
+	string direction=3[(pbex.string_bytes_in)="after",(pbex.string_bytes_in)="before"];
 }
 message get_group_requests_resp{
 	repeated requester_info requesters=1;
