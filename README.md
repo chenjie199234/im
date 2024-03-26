@@ -46,6 +46,11 @@ AppConfig.json该文件配置了该服务需要使用的业务配置,可热更�
 SourceConfig.json该文件配置了该服务需要使用的资源配置,不热更新
 ```
 
+## Cache
+### Redis(Version >= 7.0)
+#### gate_redis(Cluster mode is better)
+#### im_redis(Cluster mode is better)
+
 ## DB
 ### Mongo(Shard Mode)(Version >= 6.0)
 #### im
