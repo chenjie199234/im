@@ -35,8 +35,8 @@ func Start() *Service {
 	s := &Service{
 		stop: graceful.New(),
 
-		chatDao:     chatdao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
-		relationDao: relationDao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
+		chatDao:     chatdao.NewDao(nil, config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
+		relationDao: relationDao.NewDao(nil, config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
 	}
 	return s
 }

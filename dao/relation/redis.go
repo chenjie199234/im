@@ -137,6 +137,12 @@ return num`)
 }
 
 //-----------------------user request--------------------------------------
+//redis struct: sorted set
+//key: request_user_{userid}
+//value: user_requestuserid or group_invitegroupid		score: timestamp(microseconds)
+//redis struct: hash
+//key: request_user_{userid}_extra
+//field: user_requestuserid or group_invitegroupid		value: requestusername or invitegroupname
 
 func (d *Dao) RedisAddMakeFriendRequest(ctx context.Context, requester, requestername, accepter string) error {
 	key1 := "request_user_{" + accepter + "}"
@@ -224,6 +230,12 @@ func (d *Dao) RedisDelUserRequest(ctx context.Context, userid, target, targetTyp
 }
 
 //-----------------------group request--------------------------------------
+//redis struct: sorted set
+//key: request_group_{groupid}
+//value: requestuserid			score: timestamp(microseconds)
+//redis struct: hash
+//key: request_group_{groupid}_extra
+//field: requestuserid			value: requestusername
 
 func (d *Dao) RedisAddGroupApplyRequest(ctx context.Context, requester, requestername, groupid string) error {
 	key1 := "request_group_{" + groupid + "}"
@@ -291,6 +303,11 @@ func (d *Dao) RedisDelGroupRequest(ctx context.Context, groupid, userid string) 
 }
 
 //-----------------------user--------------------------------------
+//redis struct: hash
+//key: relation_user_{userid}
+//field: user_				value: selfname(if empty means this user not exist)
+//field: user_frienduserid		value: friendname
+//field: group_groupid			value: groupname
 
 // targets must be empty or contain user self(target == "")
 func (d *Dao) RedisSetUserRelations(ctx context.Context, userid string, targets []*model.RelationTarget) error {
@@ -441,6 +458,10 @@ func (d *Dao) RedisDelUserRelation(ctx context.Context, userid, target, targetTy
 }
 
 //-----------------------group--------------------------------------
+//redis struct: hash
+//key: relation_group_{groupid}
+//field: (empty field)			value: selfname(if empty means this group not exist)
+//field: memberid			value: membername
 
 // members must be empty or contain group self(target == "")
 func (d *Dao) RedisSetGroupMembers(ctx context.Context, groupid string, users []*model.RelationTarget) error {

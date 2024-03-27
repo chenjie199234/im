@@ -35,6 +35,11 @@ return num`)
 }
 
 //------------------------------------index-----------------------------------
+//redis struct: hash
+//key: im_user_{userid}
+//field: chatkey_msg		value: msg_index
+//field: chatkey_recall		value: recall_index
+//field: chatkey_ack		value: ack_index
 
 // if MsgIndex or RecallIndex or AckIndex is math.MaxUint32 means this kind of index will not be setted
 func (d *Dao) RedisSetIndex(ctx context.Context, userid, chatkey string, MsgIndex, RecallIndex, AckIndex uint32) error {

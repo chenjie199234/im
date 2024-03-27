@@ -40,8 +40,8 @@ func Start() *Service {
 	return &Service{
 		stop: graceful.New(),
 
-		relationDao: relationdao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
-		chatDao:     chatdao.NewDao(config.GetMysql("im_mysql"), config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
+		relationDao: relationdao.NewDao(nil, config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
+		chatDao:     chatdao.NewDao(nil, config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
 	}
 }
 func (s *Service) UpdateSelfName(ctx context.Context, req *api.UpdateSelfNameReq) (*api.UpdateSelfNameResp, error) {
