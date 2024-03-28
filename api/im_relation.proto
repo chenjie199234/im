@@ -22,6 +22,11 @@ service relation{
 	//	option (pbex.cgrpc_midwares)="a";//this function on grpc protocol has 3 midwares,it's order is b,c,a
 	//}
 
+	rpc online(online_req)returns(online_resp){
+		option (pbex.crpc_midwares)="accesskey";
+		option (pbex.cgrpc_midwares)="accesskey";
+	}
+
 	rpc update_self_name(update_self_name_req)returns(update_self_name_resp){
 		option (pbex.method)="post";
 		option (pbex.web_midwares)="token";
@@ -81,7 +86,7 @@ service relation{
 		option (pbex.method)="post";
 		option (pbex.web_midwares)="token";
 	}
-	rpc relations(relations_req)returns(relations_resp){
+	rpc relation(relation_req)returns(relation_resp){
 		option (pbex.method)="post";
 		option (pbex.web_midwares)="token";
 	}
@@ -126,6 +131,11 @@ service relation{
 //message exampleresp{
 	//int64 example_resp=1;
 //}
+
+message online_req{
+}
+message online_resp{
+}
 
 message update_self_name_req{
 	string new_name=1[(pbex.string_bytes_len_gt)=0,(pbex.string_bytes_len_lte)=64];
@@ -206,24 +216,15 @@ message kick_group_req{
 }
 message kick_group_resp{
 }
-
-message relation_info{
-	string target=1;//empty means this is self
-	string target_type=2;//user or group
-	string name=3;
-	uint32 msg_index=4;
-	uint32 recall_index=5;
-	uint32 ack_index=6;
+message relation_req{
+	string target=1[(pbex.string_bytes_len_eq)=24];
+	string target_type=2[(pbex.string_bytes_in)="user",(pbex.string_bytes_in)="group"];
 }
-message relations_req{
-	//hex(sha256(join(sort(["user_"+userid1+"_"+name+"_"+msg_index+"_"+recall_index+"_"+ack_index,
-	//	"group_"+groupid1+"_"+name+"_"+msg_index+"_"+recall_index+"_"+ack_index,
-	//	"user_"+userid2+"_"+name+"_"+msg_index+"_"+recall_index+"_"+ack_index]),",")))
-	string current_hash=1[(pbex.string_bytes_len_eq)=64];
-}
-message relations_resp{
-	bool update=1;//if the current_hash is same,this field is false
-	repeated relation_info relations=2;//if the current_hash is same,this field is empty
+message relation_resp{
+	string name=1;
+	uint32 msg_index=2;
+	uint32 recall_index=3;
+	uint32 ack_index=4;
 }
 message group_member_info{
 	string member=1;//userid

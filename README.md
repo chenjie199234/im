@@ -50,6 +50,7 @@ SourceConfig.json该文件配置了该服务需要使用的资源配置,不热�
 ### Redis(Version >= 7.0)
 #### gate_redis(Cluster mode is better)
 #### im_redis(Cluster mode is better)
+#### match_redis(Cluster mode is forbidden)
 
 ## DB
 ### Mongo(Shard Mode)(Version >= 6.0)

@@ -47,6 +47,10 @@ var (
 	ErrSelfTooManyRelations   = cerror.MakeError(22006, http.StatusBadRequest, "you have too many friends and groups to get more")
 	ErrTargetTooManyRelations = cerror.MakeError(22007, http.StatusBadRequest, "target has too many friends and groups to get more")
 	ErrGroupTooManyMembers    = cerror.MakeError(22008, http.StatusBadRequest, "group has too many members to get more")
+
+	ErrAlreadyInMatching      = cerror.MakeError(23001, http.StatusBadRequest, "already in matching")
+	ErrAlreadyMatched         = cerror.MakeError(23002, http.StatusBadRequest, "already matched")
+	ErrUserConflictInMatching = cerror.MakeError(23003, http.StatusInternalServerError, "user conflict in matching")
 )
 
 func ReturnEcode(originerror error, defaulterror *cerror.Error) error {

@@ -2,25 +2,18 @@
 // version:<br />
 // 	protoc-gen-markdown v0.0.110<br />
 // 	protoc              v4.25.3<br />
-// source: api/im_chat.proto<br />
+// source: api/im_match.proto<br />
 
-## chat
-### send
-//send a msg
+## match
+### status
+
 #### Req:
 ```
-Path:         /im.chat/send
+Path:         /im.match/status
 Method:       POST
 Content-Type: application/json
 ------------------------------------------------------------------------------------------------------------
 {
-	//value length must > 0
-	"target":"str",
-	//value must in ["user","group"]
-	"target_type":"str",
-	//value length must > 0
-	"msg":"str",
-	"extra":"str"
 }
 ------------------------------------------------------------------------------------------------------------
 ```
@@ -33,62 +26,36 @@ Fail:    httpcode:4xx/5xx
 Success: httpcode:200
 ------------------------------------------------------------------------------------------------------------
 {
-	//msg index start from 1
+	"lan":"str",
+	"city":"str",
+	"regions":["str","str"],
+	"activities":["str","str"],
+	//0-depend on the fields up(empty:not in matching,not empty:in matching),>0-matched timestamp(unit seconds)
 	//uint32
-	"msg_index":0,
-	//unit: nanosecond
-	//uint32
-	"timestamp":0
+	"status":0,
+	"matched_region":"str",
+	"matched_activity":"str"
 }
 ------------------------------------------------------------------------------------------------------------
 ```
-### recall
-//recall a msg send by self
+### do
+
 #### Req:
 ```
-Path:         /im.chat/recall
+Path:         /im.match/do
 Method:       POST
 Content-Type: application/json
 ------------------------------------------------------------------------------------------------------------
 {
-	//value length must > 0
-	"target":"str",
-	//value must in ["user","group"]
-	"target_type":"str",
-	//uint32
-	"msg_index":0
-}
-------------------------------------------------------------------------------------------------------------
-```
-#### Resp:
-```
-Fail:    httpcode:4xx/5xx
-------------------------------------------------------------------------------------------------------------
-{"code":123,"msg":"error message"}
-------------------------------------------------------------------------------------------------------------
-Success: httpcode:200
-------------------------------------------------------------------------------------------------------------
-{
-	//uint32
-	"recall_index":0
-}
-------------------------------------------------------------------------------------------------------------
-```
-### ack
-//already read the msg send by other(self's msg don't need to ack)
-#### Req:
-```
-Path:         /im.chat/ack
-Method:       POST
-Content-Type: application/json
-------------------------------------------------------------------------------------------------------------
-{
-	//value length must > 0
-	"target":"str",
-	//value must in ["user","group"]
-	"target_type":"str",
-	//uint32
-	"msg_index":0
+	//value must in ["zh","en","ru","de","fr","ar","ja","ko","hi","it"]
+	"lan":"str",
+	"city":"str",
+	//element num must > 0
+	//element num must <= 3
+	"regions":["str","str"],
+	//element num must > 0
+	//element num must <= 3
+	"activities":["str","str"]
 }
 ------------------------------------------------------------------------------------------------------------
 ```
@@ -104,32 +71,15 @@ Success: httpcode:200
 }
 ------------------------------------------------------------------------------------------------------------
 ```
-### pull
-//get more msgs and recalls
+### cancel
+
 #### Req:
 ```
-Path:         /im.chat/pull
+Path:         /im.match/cancel
 Method:       POST
 Content-Type: application/json
 ------------------------------------------------------------------------------------------------------------
 {
-	//value length must > 0
-	"target":"str",
-	//value must in ["user","group"]
-	"target_type":"str",
-	//value must in ["before","after"]
-	"direction":"str",
-	//the response will include this index
-	//if this is 0,means don't need to pull the msgs
-	//uint32
-	"start_msg_index":0,
-	//if this is 0,means don't need to pull the recalls
-	//uint32
-	"start_recall_index":0,
-	//uint32
-	//value must > 0
-	//value must <= 50
-	"count":0
 }
 ------------------------------------------------------------------------------------------------------------
 ```
@@ -142,26 +92,75 @@ Fail:    httpcode:4xx/5xx
 Success: httpcode:200
 ------------------------------------------------------------------------------------------------------------
 {
-	//object msg_info
-	"msgs":[{},{}],
-	//kv map,key-uint32 use string is json's require,value-uint32
-	"recalls":{"0":0,"0":0}
 }
 ------------------------------------------------------------------------------------------------------------
-msg_info: {
-	//msg index start from 1
+```
+### activities
+
+#### Req:
+```
+Path:         /im.match/activities
+Method:       POST
+Content-Type: application/json
+------------------------------------------------------------------------------------------------------------
+{
+	//value must in ["zh","en","ru","de","fr","ar","ja","ko","hi","it"]
+	"lan":"str"
+}
+------------------------------------------------------------------------------------------------------------
+```
+#### Resp:
+```
+Fail:    httpcode:4xx/5xx
+------------------------------------------------------------------------------------------------------------
+{"code":123,"msg":"error message"}
+------------------------------------------------------------------------------------------------------------
+Success: httpcode:200
+------------------------------------------------------------------------------------------------------------
+{
+	//object activity_info
+	"infos":[{},{}]
+}
+------------------------------------------------------------------------------------------------------------
+activity_info: {
+	"name":"str",
 	//uint32
-	"msg_index":0,
-	//recall index start 1,0 means didn't recall
+	"min":0,
 	//uint32
-	"recall_index":0,
-	"msg":"str",
-	"extra":"str",
-	//uint32
-	"timestamp":0,
-	"sender":"str",
-	"target":"str",
-	"target_type":"str"
+	"max":0
+}
+------------------------------------------------------------------------------------------------------------
+```
+### cities
+
+#### Req:
+```
+Path:         /im.match/cities
+Method:       POST
+Content-Type: application/json
+------------------------------------------------------------------------------------------------------------
+{
+	//value must in ["zh","en","ru","de","fr","ar","ja","ko","hi","it"]
+	"lan":"str"
+}
+------------------------------------------------------------------------------------------------------------
+```
+#### Resp:
+```
+Fail:    httpcode:4xx/5xx
+------------------------------------------------------------------------------------------------------------
+{"code":123,"msg":"error message"}
+------------------------------------------------------------------------------------------------------------
+Success: httpcode:200
+------------------------------------------------------------------------------------------------------------
+{
+	//object city_info
+	"infos":[{},{}]
+}
+------------------------------------------------------------------------------------------------------------
+city_info: {
+	"name":"str",
+	"regions":["str","str"]
 }
 ------------------------------------------------------------------------------------------------------------
 ```

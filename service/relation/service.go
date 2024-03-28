@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,13 +38,133 @@ type Service struct {
 
 // Start -
 func Start() *Service {
-	return &Service{
+	s := &Service{
 		stop: graceful.New(),
 
 		relationDao: relationdao.NewDao(nil, config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
 		chatDao:     chatdao.NewDao(nil, config.GetRedis("im_redis"), config.GetMongo("im_mongo")),
 	}
+	util.SetOnlineFunc(func(ctx context.Context) error {
+		_, e := s.Online(ctx, &api.OnlineReq{})
+		return e
+	})
+	return s
 }
+
+func (s *Service) Online(ctx context.Context, req *api.OnlineReq) (*api.OnlineResp, error) {
+	md := metadata.GetMetadata(ctx)
+	userid := md["Token-User"]
+	relations, e := s.relationDao.GetUserRelations(ctx, userid)
+	if e != nil {
+		log.Error(ctx, "[Online] get user all relations failed", log.String("user_id", userid), log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	indexes, e := s.chatDao.RedisGetIndexAll(ctx, userid)
+	if e != nil {
+		log.Error(ctx, "[Online] get user all indexes in redis failed", log.String("user_id", userid), log.CError(e))
+		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
+	}
+	infos := make([]*util.UserAction, 0, len(relations))
+	missed := make([]string, 0, 10)
+	for _, relation := range relations {
+		if relation.Target == "" {
+			continue
+		}
+		chatkey := util.FormChatKey(userid, relation.Target, relation.TargetType)
+		if _, ok := indexes[chatkey]; !ok {
+			missed = append(missed, chatkey)
+		}
+	}
+	if len(missed) > 0 {
+		lker := &sync.Mutex{}
+		wg := &sync.WaitGroup{}
+		wg.Add(len(missed))
+		for _, v := range missed {
+			chatkey := v
+			go func() {
+				defer wg.Done()
+				index, err := s.chatDao.GetIndex(ctx, userid, chatkey)
+				if err != nil {
+					log.Error(ctx, "[Online] get user index failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(err))
+					e = err
+					return
+				}
+				lker.Lock()
+				indexes[chatkey] = &model.IMIndex{
+					MsgIndex:    index.MsgIndex,
+					RecallIndex: index.RecallIndex,
+					AckIndex:    index.AckIndex,
+				}
+				lker.Unlock()
+			}()
+		}
+		wg.Wait()
+		if e != nil {
+			return nil, e
+		}
+	}
+	for _, relation := range relations {
+		if relation.Target == "" {
+			//self
+			infos = append(infos, &util.UserAction{
+				Target:      relation.Target,
+				TargetType:  relation.TargetType,
+				Name:        relation.Name,
+				MsgIndex:    0,
+				RecallIndex: 0,
+				AckIndex:    0,
+			})
+		} else {
+			chatkey := util.FormChatKey(userid, relation.Target, relation.TargetType)
+			index := indexes[chatkey]
+			infos = append(infos, &util.UserAction{
+				Target:      relation.Target,
+				TargetType:  relation.TargetType,
+				Name:        relation.Name,
+				MsgIndex:    index.MsgIndex,
+				RecallIndex: index.RecallIndex,
+				AckIndex:    index.AckIndex,
+			})
+		}
+	}
+	//push
+	ctx = trace.CloneSpan(ctx)
+	for _, info := range infos {
+		pushmsg, _ := json.Marshal(&util.MQ{
+			Type:    "userRelationAdd",
+			Content: info,
+		})
+		util.AddWork(func() {
+			if e := util.Unicast(ctx, userid, pushmsg); e != nil {
+				log.Error(ctx, "[Online] push mq failed", log.String("user_id", userid), log.CError(e))
+			}
+		})
+	}
+	//do clean
+	needdel := make([]string, 0, 10)
+	for chatkey := range indexes {
+		find := false
+		for _, relation := range relations {
+			if util.FormChatKey(userid, relation.Target, relation.TargetType) == chatkey {
+				find = true
+				break
+			}
+		}
+		if !find {
+			needdel = append(needdel, chatkey)
+		}
+	}
+	for _, v := range needdel {
+		chatkey := v
+		go func() {
+			if e := s.chatDao.RedisDelIndex(ctx, userid, chatkey); e != nil {
+				log.Error(ctx, "[Online] del redis index failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
+			}
+		}()
+	}
+	return &api.OnlineResp{}, nil
+}
+
 func (s *Service) UpdateSelfName(ctx context.Context, req *api.UpdateSelfNameReq) (*api.UpdateSelfNameResp, error) {
 	md := metadata.GetMetadata(ctx)
 	userid := md["Token-User"]
@@ -708,140 +829,31 @@ func (s *Service) KickGroup(ctx context.Context, req *api.KickGroupReq) (*api.Ki
 	}()
 	return &api.KickGroupResp{}, nil
 }
-func (s *Service) Relations(ctx context.Context, req *api.RelationsReq) (*api.RelationsResp, error) {
+func (s *Service) Relation(ctx context.Context, req *api.RelationReq) (*api.RelationResp, error) {
 	md := metadata.GetMetadata(ctx)
 	userid := md["Token-User"]
+	chatkey := util.FormChatKey(userid, req.Target, req.TargetType)
 	//check rate
-	if e := s.relationDao.RedisGetUserRelationsRate(ctx, userid); e != nil {
-		log.Error(ctx, "[Relations] rate check failed", log.String("user_id", userid), log.CError(e))
+	if e := s.relationDao.RedisGetUserRelationRate(ctx, userid, chatkey); e != nil {
+		log.Error(ctx, "[Relation] rate check failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
-	relations, e := s.relationDao.GetUserRelations(ctx, userid)
+	info, e := s.relationDao.GetUserRelation(ctx, userid, req.Target, req.TargetType)
 	if e != nil {
-		log.Error(ctx, "[Relations] dao op failed", log.String("user_id", userid), log.CError(e))
+		log.Error(ctx, "[Relation] dao op failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
-	indexes, e := s.chatDao.RedisGetIndexAll(ctx, userid)
+	index, e := s.chatDao.GetIndex(ctx, userid, chatkey)
 	if e != nil {
-		log.Error(ctx, "[Relations] dao op failed", log.String("user_id", userid), log.CError(e))
+		log.Error(ctx, "[Relation] dao op failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
 		return nil, ecode.ReturnEcode(e, ecode.ErrSystem)
 	}
-	resp := &api.RelationsResp{
-		Update:    true,
-		Relations: make([]*api.RelationInfo, 0, len(relations)),
-	}
-	missed := make([]string, 0, 10)
-	for _, relation := range relations {
-		if relation.Target == "" {
-			continue
-		}
-		chatkey := util.FormChatKey(userid, relation.Target, relation.TargetType)
-		if _, ok := indexes[chatkey]; !ok {
-			missed = append(missed, chatkey)
-		}
-	}
-	if len(missed) > 0 {
-		lker := &sync.Mutex{}
-		wg := &sync.WaitGroup{}
-		wg.Add(len(missed))
-		for _, v := range missed {
-			chatkey := v
-			util.AddWork(func() {
-				defer wg.Done()
-				index, err := s.chatDao.GetIndex(ctx, userid, chatkey)
-				if err != nil {
-					log.Error(ctx, "[Relations] dao op failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(err))
-					e = err
-					return
-				}
-				lker.Lock()
-				indexes[chatkey] = &model.IMIndex{
-					MsgIndex:    index.MsgIndex,
-					RecallIndex: index.RecallIndex,
-					AckIndex:    index.AckIndex,
-				}
-				lker.Unlock()
-			})
-		}
-		wg.Wait()
-		if e != nil {
-			return nil, e
-		}
-	}
-	for _, relation := range relations {
-		if relation.Target == "" {
-			//self
-			resp.Relations = append(resp.Relations, &api.RelationInfo{
-				Target:      relation.Target,
-				TargetType:  relation.TargetType,
-				Name:        relation.Name,
-				MsgIndex:    0,
-				RecallIndex: 0,
-				AckIndex:    0,
-			})
-		} else {
-			chatkey := util.FormChatKey(userid, relation.Target, relation.TargetType)
-			index := indexes[chatkey]
-			resp.Relations = append(resp.Relations, &api.RelationInfo{
-				Target:      relation.Target,
-				TargetType:  relation.TargetType,
-				Name:        relation.Name,
-				MsgIndex:    index.MsgIndex,
-				RecallIndex: index.RecallIndex,
-				AckIndex:    index.AckIndex,
-			})
-		}
-	}
-	strs := make([]string, 0, len(relations))
-	for _, v := range resp.Relations {
-		str := v.TargetType +
-			"_" +
-			v.Target +
-			"_" +
-			v.Name +
-			"_" +
-			strconv.FormatUint(uint64(v.MsgIndex), 10) +
-			"_" +
-			strconv.FormatUint(uint64(v.RecallIndex), 10) +
-			"_" +
-			strconv.FormatUint(uint64(v.AckIndex), 10)
-		strs = append(strs, str)
-	}
-	sort.Strings(strs)
-	hashstr := sha256.Sum256(common.STB(strings.Join(strs, ",")))
-	if hex.EncodeToString(hashstr[:]) == req.CurrentHash {
-		resp.Update = false
-		resp.Relations = nil
-	}
-	//do clean
-	go func() {
-		needdel := make([]string, 0, 10)
-		for chatkey := range indexes {
-			find := false
-			for _, relation := range relations {
-				if util.FormChatKey(userid, relation.Target, relation.TargetType) == chatkey {
-					find = true
-					break
-				}
-			}
-			if !find {
-				needdel = append(needdel, chatkey)
-			}
-		}
-		if len(needdel) == 0 {
-			return
-		}
-		ctx := trace.CloneSpan(ctx)
-		for _, v := range needdel {
-			chatkey := v
-			util.AddWork(func() {
-				if e := s.chatDao.RedisDelIndex(ctx, userid, chatkey); e != nil {
-					log.Error(ctx, "[Relations] del redis index failed", log.String("user_id", userid), log.String("chat_key", chatkey), log.CError(e))
-				}
-			})
-		}
-	}()
-	return resp, nil
+	return &api.RelationResp{
+		Name:        info.Name,
+		MsgIndex:    index.MsgIndex,
+		RecallIndex: index.RecallIndex,
+		AckIndex:    index.AckIndex,
+	}, nil
 }
 func (s *Service) GroupMembers(ctx context.Context, req *api.GroupMembersReq) (*api.GroupMembersResp, error) {
 	md := metadata.GetMetadata(ctx)

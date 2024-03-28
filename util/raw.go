@@ -11,6 +11,7 @@ import (
 	"github.com/chenjie199234/im/ecode"
 
 	"github.com/chenjie199234/Corelib/log"
+	"github.com/chenjie199234/Corelib/metadata"
 	"github.com/chenjie199234/Corelib/mids"
 	"github.com/chenjie199234/Corelib/stream"
 	"github.com/chenjie199234/Corelib/util/common"
@@ -72,7 +73,11 @@ return 0`)
 var RawName = strconv.FormatInt(time.Now().UnixNano(), 10) + "_" + common.MakeRandCode(10)
 var rawInstance *stream.Instance
 var rdb = config.GetRedis("gate_redis")
+var online func(context.Context) error
 
+func SetOnlineFunc(f func(ctx context.Context) error) {
+	online = f
+}
 func SetRawInstance(rawinstance *stream.Instance) {
 	rawInstance = rawinstance
 	rdb.SubUnicast(RawName, 32, func(data []byte, last bool) {
@@ -101,15 +106,14 @@ func SetRawInstance(rawinstance *stream.Instance) {
 		}
 	})
 }
-
 func RawVerify(ctx context.Context, peerVerifyData []byte) (response []byte, uniqueid string, success bool) {
 	t := mids.VerifyToken(ctx, common.BTS(peerVerifyData))
 	if t == nil {
 		log.Error(ctx, "[RawVerify] token verify failed", log.String("token", string(peerVerifyData)))
 		return nil, "", false
 	}
-	//check rate
-	status, e := rdb.RateLimit(ctx, map[string][2]uint64{"user_login_{" + t.UserID + "}": {10, 60}})
+	//check rate 1 minute do 10 times
+	status, e := rdb.RateLimit(ctx, map[string][2]uint64{"user_login_{" + t.UserID + "}": {10, 59}})
 	if e != nil {
 		log.Error(ctx, "[RawVerify] rate check failed", log.String("user_id", t.UserID), log.CError(e))
 		return nil, "", false
@@ -125,7 +129,7 @@ func RawVerify(ctx context.Context, peerVerifyData []byte) (response []byte, uni
 	}
 	return nil, t.UserID, true
 }
-func RawOnline(p *stream.Peer) (success bool) {
+func RawOnline(ctx context.Context, p *stream.Peer) (success bool) {
 	//send first ping to get the netlag from pong as soon as possible
 	if e := p.SendPing(); e != nil {
 		log.Error(p, "[RawOnline] send first ping failed",
@@ -147,6 +151,8 @@ func RawOnline(p *stream.Peer) (success bool) {
 	}
 	w := make(chan []byte, 512)
 	p.SetData(unsafe.Pointer(&w))
+	//TODO call relation service's Online function
+	online(metadata.AddMetadata(ctx, "Token-User", p.GetUniqueID()))
 	go func() {
 		//writer goroutine
 		for {

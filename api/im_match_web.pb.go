@@ -2,7 +2,7 @@
 // version:
 // 	protoc-gen-go-web v0.0.110<br />
 // 	protoc            v4.25.3<br />
-// source: api/im_chat.proto<br />
+// source: api/im_match.proto<br />
 
 package api
 
@@ -16,35 +16,32 @@ import (
 	proto "google.golang.org/protobuf/proto"
 	io "io"
 	http "net/http"
-	strconv "strconv"
 	strings "strings"
 )
 
-var _WebPathChatSend = "/im.chat/send"
-var _WebPathChatRecall = "/im.chat/recall"
-var _WebPathChatAck = "/im.chat/ack"
-var _WebPathChatPull = "/im.chat/pull"
+var _WebPathMatchStatus = "/im.match/status"
+var _WebPathMatchDo = "/im.match/do"
+var _WebPathMatchCancel = "/im.match/cancel"
+var _WebPathMatchActivities = "/im.match/activities"
+var _WebPathMatchCities = "/im.match/cities"
 
-type ChatWebClient interface {
-	// send a msg
-	Send(context.Context, *SendReq, http.Header) (*SendResp, error)
-	// recall a msg send by self
-	Recall(context.Context, *RecallReq, http.Header) (*RecallResp, error)
-	// already read the msg send by other(self's msg don't need to ack)
-	Ack(context.Context, *AckReq, http.Header) (*AckResp, error)
-	// get more msgs and recalls
-	Pull(context.Context, *PullReq, http.Header) (*PullResp, error)
+type MatchWebClient interface {
+	Status(context.Context, *StatusReq, http.Header) (*StatusResp, error)
+	Do(context.Context, *DoReq, http.Header) (*DoResp, error)
+	Cancel(context.Context, *CancelReq, http.Header) (*CancelResp, error)
+	Activities(context.Context, *ActivitiesReq, http.Header) (*ActivitiesResp, error)
+	Cities(context.Context, *CitiesReq, http.Header) (*CitiesResp, error)
 }
 
-type chatWebClient struct {
+type matchWebClient struct {
 	cc *web.WebClient
 }
 
-func NewChatWebClient(c *web.WebClient) ChatWebClient {
-	return &chatWebClient{cc: c}
+func NewMatchWebClient(c *web.WebClient) MatchWebClient {
+	return &matchWebClient{cc: c}
 }
 
-func (c *chatWebClient) Send(ctx context.Context, req *SendReq, header http.Header) (*SendResp, error) {
+func (c *matchWebClient) Status(ctx context.Context, req *StatusReq, header http.Header) (*StatusResp, error) {
 	if req == nil {
 		return nil, cerror.ErrReq
 	}
@@ -54,7 +51,7 @@ func (c *chatWebClient) Send(ctx context.Context, req *SendReq, header http.Head
 	header.Set("Content-Type", "application/x-protobuf")
 	header.Set("Accept", "application/x-protobuf")
 	reqd, _ := proto.Marshal(req)
-	r, e := c.cc.Post(ctx, _WebPathChatSend, "", header, metadata.GetMetadata(ctx), reqd)
+	r, e := c.cc.Post(ctx, _WebPathMatchStatus, "", header, metadata.GetMetadata(ctx), reqd)
 	if e != nil {
 		return nil, e
 	}
@@ -63,7 +60,7 @@ func (c *chatWebClient) Send(ctx context.Context, req *SendReq, header http.Head
 	if e != nil {
 		return nil, cerror.ConvertStdError(e)
 	}
-	resp := new(SendResp)
+	resp := new(StatusResp)
 	if len(data) == 0 {
 		return resp, nil
 	}
@@ -76,7 +73,7 @@ func (c *chatWebClient) Send(ctx context.Context, req *SendReq, header http.Head
 	}
 	return resp, nil
 }
-func (c *chatWebClient) Recall(ctx context.Context, req *RecallReq, header http.Header) (*RecallResp, error) {
+func (c *matchWebClient) Do(ctx context.Context, req *DoReq, header http.Header) (*DoResp, error) {
 	if req == nil {
 		return nil, cerror.ErrReq
 	}
@@ -86,7 +83,7 @@ func (c *chatWebClient) Recall(ctx context.Context, req *RecallReq, header http.
 	header.Set("Content-Type", "application/x-protobuf")
 	header.Set("Accept", "application/x-protobuf")
 	reqd, _ := proto.Marshal(req)
-	r, e := c.cc.Post(ctx, _WebPathChatRecall, "", header, metadata.GetMetadata(ctx), reqd)
+	r, e := c.cc.Post(ctx, _WebPathMatchDo, "", header, metadata.GetMetadata(ctx), reqd)
 	if e != nil {
 		return nil, e
 	}
@@ -95,7 +92,7 @@ func (c *chatWebClient) Recall(ctx context.Context, req *RecallReq, header http.
 	if e != nil {
 		return nil, cerror.ConvertStdError(e)
 	}
-	resp := new(RecallResp)
+	resp := new(DoResp)
 	if len(data) == 0 {
 		return resp, nil
 	}
@@ -108,7 +105,7 @@ func (c *chatWebClient) Recall(ctx context.Context, req *RecallReq, header http.
 	}
 	return resp, nil
 }
-func (c *chatWebClient) Ack(ctx context.Context, req *AckReq, header http.Header) (*AckResp, error) {
+func (c *matchWebClient) Cancel(ctx context.Context, req *CancelReq, header http.Header) (*CancelResp, error) {
 	if req == nil {
 		return nil, cerror.ErrReq
 	}
@@ -118,7 +115,7 @@ func (c *chatWebClient) Ack(ctx context.Context, req *AckReq, header http.Header
 	header.Set("Content-Type", "application/x-protobuf")
 	header.Set("Accept", "application/x-protobuf")
 	reqd, _ := proto.Marshal(req)
-	r, e := c.cc.Post(ctx, _WebPathChatAck, "", header, metadata.GetMetadata(ctx), reqd)
+	r, e := c.cc.Post(ctx, _WebPathMatchCancel, "", header, metadata.GetMetadata(ctx), reqd)
 	if e != nil {
 		return nil, e
 	}
@@ -127,7 +124,7 @@ func (c *chatWebClient) Ack(ctx context.Context, req *AckReq, header http.Header
 	if e != nil {
 		return nil, cerror.ConvertStdError(e)
 	}
-	resp := new(AckResp)
+	resp := new(CancelResp)
 	if len(data) == 0 {
 		return resp, nil
 	}
@@ -140,7 +137,7 @@ func (c *chatWebClient) Ack(ctx context.Context, req *AckReq, header http.Header
 	}
 	return resp, nil
 }
-func (c *chatWebClient) Pull(ctx context.Context, req *PullReq, header http.Header) (*PullResp, error) {
+func (c *matchWebClient) Activities(ctx context.Context, req *ActivitiesReq, header http.Header) (*ActivitiesResp, error) {
 	if req == nil {
 		return nil, cerror.ErrReq
 	}
@@ -150,7 +147,7 @@ func (c *chatWebClient) Pull(ctx context.Context, req *PullReq, header http.Head
 	header.Set("Content-Type", "application/x-protobuf")
 	header.Set("Accept", "application/x-protobuf")
 	reqd, _ := proto.Marshal(req)
-	r, e := c.cc.Post(ctx, _WebPathChatPull, "", header, metadata.GetMetadata(ctx), reqd)
+	r, e := c.cc.Post(ctx, _WebPathMatchActivities, "", header, metadata.GetMetadata(ctx), reqd)
 	if e != nil {
 		return nil, e
 	}
@@ -159,7 +156,39 @@ func (c *chatWebClient) Pull(ctx context.Context, req *PullReq, header http.Head
 	if e != nil {
 		return nil, cerror.ConvertStdError(e)
 	}
-	resp := new(PullResp)
+	resp := new(ActivitiesResp)
+	if len(data) == 0 {
+		return resp, nil
+	}
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-protobuf") {
+		if e := proto.Unmarshal(data, resp); e != nil {
+			return nil, cerror.ErrResp
+		}
+	} else if e := (protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}).Unmarshal(data, resp); e != nil {
+		return nil, cerror.ErrResp
+	}
+	return resp, nil
+}
+func (c *matchWebClient) Cities(ctx context.Context, req *CitiesReq, header http.Header) (*CitiesResp, error) {
+	if req == nil {
+		return nil, cerror.ErrReq
+	}
+	if header == nil {
+		header = make(http.Header)
+	}
+	header.Set("Content-Type", "application/x-protobuf")
+	header.Set("Accept", "application/x-protobuf")
+	reqd, _ := proto.Marshal(req)
+	r, e := c.cc.Post(ctx, _WebPathMatchCities, "", header, metadata.GetMetadata(ctx), reqd)
+	if e != nil {
+		return nil, e
+	}
+	data, e := io.ReadAll(r.Body)
+	r.Body.Close()
+	if e != nil {
+		return nil, cerror.ConvertStdError(e)
+	}
+	resp := new(CitiesResp)
 	if len(data) == 0 {
 		return resp, nil
 	}
@@ -173,76 +202,17 @@ func (c *chatWebClient) Pull(ctx context.Context, req *PullReq, header http.Head
 	return resp, nil
 }
 
-type ChatWebServer interface {
-	// send a msg
-	Send(context.Context, *SendReq) (*SendResp, error)
-	// recall a msg send by self
-	Recall(context.Context, *RecallReq) (*RecallResp, error)
-	// already read the msg send by other(self's msg don't need to ack)
-	Ack(context.Context, *AckReq) (*AckResp, error)
-	// get more msgs and recalls
-	Pull(context.Context, *PullReq) (*PullResp, error)
+type MatchWebServer interface {
+	Status(context.Context, *StatusReq) (*StatusResp, error)
+	Do(context.Context, *DoReq) (*DoResp, error)
+	Cancel(context.Context, *CancelReq) (*CancelResp, error)
+	Activities(context.Context, *ActivitiesReq) (*ActivitiesResp, error)
+	Cities(context.Context, *CitiesReq) (*CitiesResp, error)
 }
 
-func _Chat_Send_WebHandler(handler func(context.Context, *SendReq) (*SendResp, error)) web.OutsideHandler {
+func _Match_Status_WebHandler(handler func(context.Context, *StatusReq) (*StatusResp, error)) web.OutsideHandler {
 	return func(ctx *web.Context) {
-		req := new(SendReq)
-		if strings.HasPrefix(ctx.GetContentType(), "application/json") {
-			data, e := ctx.GetBody()
-			if e != nil {
-				log.Error(ctx, "[/im.chat/send] get body failed", log.CError(e))
-				ctx.Abort(e)
-				return
-			}
-			if len(data) > 0 {
-				if e := (protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}).Unmarshal(data, req); e != nil {
-					log.Error(ctx, "[/im.chat/send] unmarshal json body failed", log.CError(e))
-					ctx.Abort(cerror.ErrReq)
-					return
-				}
-			}
-		} else if strings.HasPrefix(ctx.GetContentType(), "application/x-protobuf") {
-			data, e := ctx.GetBody()
-			if e != nil {
-				log.Error(ctx, "[/im.chat/send] get body failed", log.CError(e))
-				ctx.Abort(e)
-				return
-			}
-			if len(data) > 0 {
-				if e := proto.Unmarshal(data, req); e != nil {
-					log.Error(ctx, "[/im.chat/send] unmarshal proto body failed", log.CError(e))
-					ctx.Abort(cerror.ErrReq)
-					return
-				}
-			}
-		} else {
-			if e := ctx.ParseForm(); e != nil {
-				log.Error(ctx, "[/im.chat/send] parse form failed", log.CError(e))
-				ctx.Abort(cerror.ErrReq)
-				return
-			}
-			// req.Target
-			if form := ctx.GetForm("target"); len(form) != 0 {
-				req.Target = form
-			}
-			// req.TargetType
-			if form := ctx.GetForm("target_type"); len(form) != 0 {
-				req.TargetType = form
-			}
-			// req.Msg
-			if form := ctx.GetForm("msg"); len(form) != 0 {
-				req.Msg = form
-			}
-			// req.Extra
-			if form := ctx.GetForm("extra"); len(form) != 0 {
-				req.Extra = form
-			}
-		}
-		if errstr := req.Validate(); errstr != "" {
-			log.Error(ctx, "[/im.chat/send] validate failed", log.String("validate", errstr))
-			ctx.Abort(cerror.ErrReq)
-			return
-		}
+		req := new(StatusReq)
 		resp, e := handler(ctx, req)
 		ee := cerror.ConvertStdError(e)
 		if ee != nil {
@@ -250,7 +220,7 @@ func _Chat_Send_WebHandler(handler func(context.Context, *SendReq) (*SendResp, e
 			return
 		}
 		if resp == nil {
-			resp = new(SendResp)
+			resp = new(StatusResp)
 		}
 		if strings.HasPrefix(ctx.GetAcceptType(), "application/x-protobuf") {
 			respd, _ := proto.Marshal(resp)
@@ -261,19 +231,19 @@ func _Chat_Send_WebHandler(handler func(context.Context, *SendReq) (*SendResp, e
 		}
 	}
 }
-func _Chat_Recall_WebHandler(handler func(context.Context, *RecallReq) (*RecallResp, error)) web.OutsideHandler {
+func _Match_Do_WebHandler(handler func(context.Context, *DoReq) (*DoResp, error)) web.OutsideHandler {
 	return func(ctx *web.Context) {
-		req := new(RecallReq)
+		req := new(DoReq)
 		if strings.HasPrefix(ctx.GetContentType(), "application/json") {
 			data, e := ctx.GetBody()
 			if e != nil {
-				log.Error(ctx, "[/im.chat/recall] get body failed", log.CError(e))
+				log.Error(ctx, "[/im.match/do] get body failed", log.CError(e))
 				ctx.Abort(e)
 				return
 			}
 			if len(data) > 0 {
 				if e := (protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}).Unmarshal(data, req); e != nil {
-					log.Error(ctx, "[/im.chat/recall] unmarshal json body failed", log.CError(e))
+					log.Error(ctx, "[/im.match/do] unmarshal json body failed", log.CError(e))
 					ctx.Abort(cerror.ErrReq)
 					return
 				}
@@ -281,44 +251,42 @@ func _Chat_Recall_WebHandler(handler func(context.Context, *RecallReq) (*RecallR
 		} else if strings.HasPrefix(ctx.GetContentType(), "application/x-protobuf") {
 			data, e := ctx.GetBody()
 			if e != nil {
-				log.Error(ctx, "[/im.chat/recall] get body failed", log.CError(e))
+				log.Error(ctx, "[/im.match/do] get body failed", log.CError(e))
 				ctx.Abort(e)
 				return
 			}
 			if len(data) > 0 {
 				if e := proto.Unmarshal(data, req); e != nil {
-					log.Error(ctx, "[/im.chat/recall] unmarshal proto body failed", log.CError(e))
+					log.Error(ctx, "[/im.match/do] unmarshal proto body failed", log.CError(e))
 					ctx.Abort(cerror.ErrReq)
 					return
 				}
 			}
 		} else {
 			if e := ctx.ParseForm(); e != nil {
-				log.Error(ctx, "[/im.chat/recall] parse form failed", log.CError(e))
+				log.Error(ctx, "[/im.match/do] parse form failed", log.CError(e))
 				ctx.Abort(cerror.ErrReq)
 				return
 			}
-			// req.Target
-			if form := ctx.GetForm("target"); len(form) != 0 {
-				req.Target = form
+			// req.Lan
+			if form := ctx.GetForm("lan"); len(form) != 0 {
+				req.Lan = form
 			}
-			// req.TargetType
-			if form := ctx.GetForm("target_type"); len(form) != 0 {
-				req.TargetType = form
+			// req.City
+			if form := ctx.GetForm("city"); len(form) != 0 {
+				req.City = form
 			}
-			// req.MsgIndex
-			if form := ctx.GetForm("msg_index"); len(form) != 0 {
-				if num, e := strconv.ParseUint(form, 10, 32); e != nil {
-					log.Error(ctx, "[/im.chat/recall] data format wrong", log.String("field", "msg_index"))
-					ctx.Abort(cerror.ErrReq)
-					return
-				} else {
-					req.MsgIndex = uint32(num)
-				}
+			// req.Regions
+			if forms := ctx.GetForms("regions"); len(forms) > 0 {
+				req.Regions = forms
+			}
+			// req.Activities
+			if forms := ctx.GetForms("activities"); len(forms) > 0 {
+				req.Activities = forms
 			}
 		}
 		if errstr := req.Validate(); errstr != "" {
-			log.Error(ctx, "[/im.chat/recall] validate failed", log.String("validate", errstr))
+			log.Error(ctx, "[/im.match/do] validate failed", log.String("validate", errstr))
 			ctx.Abort(cerror.ErrReq)
 			return
 		}
@@ -329,7 +297,7 @@ func _Chat_Recall_WebHandler(handler func(context.Context, *RecallReq) (*RecallR
 			return
 		}
 		if resp == nil {
-			resp = new(RecallResp)
+			resp = new(DoResp)
 		}
 		if strings.HasPrefix(ctx.GetAcceptType(), "application/x-protobuf") {
 			respd, _ := proto.Marshal(resp)
@@ -340,19 +308,40 @@ func _Chat_Recall_WebHandler(handler func(context.Context, *RecallReq) (*RecallR
 		}
 	}
 }
-func _Chat_Ack_WebHandler(handler func(context.Context, *AckReq) (*AckResp, error)) web.OutsideHandler {
+func _Match_Cancel_WebHandler(handler func(context.Context, *CancelReq) (*CancelResp, error)) web.OutsideHandler {
 	return func(ctx *web.Context) {
-		req := new(AckReq)
+		req := new(CancelReq)
+		resp, e := handler(ctx, req)
+		ee := cerror.ConvertStdError(e)
+		if ee != nil {
+			ctx.Abort(ee)
+			return
+		}
+		if resp == nil {
+			resp = new(CancelResp)
+		}
+		if strings.HasPrefix(ctx.GetAcceptType(), "application/x-protobuf") {
+			respd, _ := proto.Marshal(resp)
+			ctx.Write("application/x-protobuf", respd)
+		} else {
+			respd, _ := protojson.MarshalOptions{AllowPartial: true, UseProtoNames: true, UseEnumNumbers: true, EmitUnpopulated: true}.Marshal(resp)
+			ctx.Write("application/json", respd)
+		}
+	}
+}
+func _Match_Activities_WebHandler(handler func(context.Context, *ActivitiesReq) (*ActivitiesResp, error)) web.OutsideHandler {
+	return func(ctx *web.Context) {
+		req := new(ActivitiesReq)
 		if strings.HasPrefix(ctx.GetContentType(), "application/json") {
 			data, e := ctx.GetBody()
 			if e != nil {
-				log.Error(ctx, "[/im.chat/ack] get body failed", log.CError(e))
+				log.Error(ctx, "[/im.match/activities] get body failed", log.CError(e))
 				ctx.Abort(e)
 				return
 			}
 			if len(data) > 0 {
 				if e := (protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}).Unmarshal(data, req); e != nil {
-					log.Error(ctx, "[/im.chat/ack] unmarshal json body failed", log.CError(e))
+					log.Error(ctx, "[/im.match/activities] unmarshal json body failed", log.CError(e))
 					ctx.Abort(cerror.ErrReq)
 					return
 				}
@@ -360,44 +349,30 @@ func _Chat_Ack_WebHandler(handler func(context.Context, *AckReq) (*AckResp, erro
 		} else if strings.HasPrefix(ctx.GetContentType(), "application/x-protobuf") {
 			data, e := ctx.GetBody()
 			if e != nil {
-				log.Error(ctx, "[/im.chat/ack] get body failed", log.CError(e))
+				log.Error(ctx, "[/im.match/activities] get body failed", log.CError(e))
 				ctx.Abort(e)
 				return
 			}
 			if len(data) > 0 {
 				if e := proto.Unmarshal(data, req); e != nil {
-					log.Error(ctx, "[/im.chat/ack] unmarshal proto body failed", log.CError(e))
+					log.Error(ctx, "[/im.match/activities] unmarshal proto body failed", log.CError(e))
 					ctx.Abort(cerror.ErrReq)
 					return
 				}
 			}
 		} else {
 			if e := ctx.ParseForm(); e != nil {
-				log.Error(ctx, "[/im.chat/ack] parse form failed", log.CError(e))
+				log.Error(ctx, "[/im.match/activities] parse form failed", log.CError(e))
 				ctx.Abort(cerror.ErrReq)
 				return
 			}
-			// req.Target
-			if form := ctx.GetForm("target"); len(form) != 0 {
-				req.Target = form
-			}
-			// req.TargetType
-			if form := ctx.GetForm("target_type"); len(form) != 0 {
-				req.TargetType = form
-			}
-			// req.MsgIndex
-			if form := ctx.GetForm("msg_index"); len(form) != 0 {
-				if num, e := strconv.ParseUint(form, 10, 32); e != nil {
-					log.Error(ctx, "[/im.chat/ack] data format wrong", log.String("field", "msg_index"))
-					ctx.Abort(cerror.ErrReq)
-					return
-				} else {
-					req.MsgIndex = uint32(num)
-				}
+			// req.Lan
+			if form := ctx.GetForm("lan"); len(form) != 0 {
+				req.Lan = form
 			}
 		}
 		if errstr := req.Validate(); errstr != "" {
-			log.Error(ctx, "[/im.chat/ack] validate failed", log.String("validate", errstr))
+			log.Error(ctx, "[/im.match/activities] validate failed", log.String("validate", errstr))
 			ctx.Abort(cerror.ErrReq)
 			return
 		}
@@ -408,7 +383,7 @@ func _Chat_Ack_WebHandler(handler func(context.Context, *AckReq) (*AckResp, erro
 			return
 		}
 		if resp == nil {
-			resp = new(AckResp)
+			resp = new(ActivitiesResp)
 		}
 		if strings.HasPrefix(ctx.GetAcceptType(), "application/x-protobuf") {
 			respd, _ := proto.Marshal(resp)
@@ -419,19 +394,19 @@ func _Chat_Ack_WebHandler(handler func(context.Context, *AckReq) (*AckResp, erro
 		}
 	}
 }
-func _Chat_Pull_WebHandler(handler func(context.Context, *PullReq) (*PullResp, error)) web.OutsideHandler {
+func _Match_Cities_WebHandler(handler func(context.Context, *CitiesReq) (*CitiesResp, error)) web.OutsideHandler {
 	return func(ctx *web.Context) {
-		req := new(PullReq)
+		req := new(CitiesReq)
 		if strings.HasPrefix(ctx.GetContentType(), "application/json") {
 			data, e := ctx.GetBody()
 			if e != nil {
-				log.Error(ctx, "[/im.chat/pull] get body failed", log.CError(e))
+				log.Error(ctx, "[/im.match/cities] get body failed", log.CError(e))
 				ctx.Abort(e)
 				return
 			}
 			if len(data) > 0 {
 				if e := (protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}).Unmarshal(data, req); e != nil {
-					log.Error(ctx, "[/im.chat/pull] unmarshal json body failed", log.CError(e))
+					log.Error(ctx, "[/im.match/cities] unmarshal json body failed", log.CError(e))
 					ctx.Abort(cerror.ErrReq)
 					return
 				}
@@ -439,68 +414,30 @@ func _Chat_Pull_WebHandler(handler func(context.Context, *PullReq) (*PullResp, e
 		} else if strings.HasPrefix(ctx.GetContentType(), "application/x-protobuf") {
 			data, e := ctx.GetBody()
 			if e != nil {
-				log.Error(ctx, "[/im.chat/pull] get body failed", log.CError(e))
+				log.Error(ctx, "[/im.match/cities] get body failed", log.CError(e))
 				ctx.Abort(e)
 				return
 			}
 			if len(data) > 0 {
 				if e := proto.Unmarshal(data, req); e != nil {
-					log.Error(ctx, "[/im.chat/pull] unmarshal proto body failed", log.CError(e))
+					log.Error(ctx, "[/im.match/cities] unmarshal proto body failed", log.CError(e))
 					ctx.Abort(cerror.ErrReq)
 					return
 				}
 			}
 		} else {
 			if e := ctx.ParseForm(); e != nil {
-				log.Error(ctx, "[/im.chat/pull] parse form failed", log.CError(e))
+				log.Error(ctx, "[/im.match/cities] parse form failed", log.CError(e))
 				ctx.Abort(cerror.ErrReq)
 				return
 			}
-			// req.Target
-			if form := ctx.GetForm("target"); len(form) != 0 {
-				req.Target = form
-			}
-			// req.TargetType
-			if form := ctx.GetForm("target_type"); len(form) != 0 {
-				req.TargetType = form
-			}
-			// req.Direction
-			if form := ctx.GetForm("direction"); len(form) != 0 {
-				req.Direction = form
-			}
-			// req.StartMsgIndex
-			if form := ctx.GetForm("start_msg_index"); len(form) != 0 {
-				if num, e := strconv.ParseUint(form, 10, 32); e != nil {
-					log.Error(ctx, "[/im.chat/pull] data format wrong", log.String("field", "start_msg_index"))
-					ctx.Abort(cerror.ErrReq)
-					return
-				} else {
-					req.StartMsgIndex = uint32(num)
-				}
-			}
-			// req.StartRecallIndex
-			if form := ctx.GetForm("start_recall_index"); len(form) != 0 {
-				if num, e := strconv.ParseUint(form, 10, 32); e != nil {
-					log.Error(ctx, "[/im.chat/pull] data format wrong", log.String("field", "start_recall_index"))
-					ctx.Abort(cerror.ErrReq)
-					return
-				} else {
-					req.StartRecallIndex = uint32(num)
-				}
-			}
-			// req.Count
-			if form := ctx.GetForm("count"); len(form) != 0 {
-				if num, e := strconv.ParseUint(form, 10, 32); e != nil {
-					log.Error(ctx, "[/im.chat/pull] data format wrong", log.String("field", "count"))
-					ctx.Abort(cerror.ErrReq)
-					return
-				} else {
-					req.Count = uint32(num)
-				}
+			// req.Lan
+			if form := ctx.GetForm("lan"); len(form) != 0 {
+				req.Lan = form
 			}
 		}
 		if errstr := req.Validate(); errstr != "" {
-			log.Error(ctx, "[/im.chat/pull] validate failed", log.String("validate", errstr))
+			log.Error(ctx, "[/im.match/cities] validate failed", log.String("validate", errstr))
 			ctx.Abort(cerror.ErrReq)
 			return
 		}
@@ -511,7 +448,7 @@ func _Chat_Pull_WebHandler(handler func(context.Context, *PullReq) (*PullResp, e
 			return
 		}
 		if resp == nil {
-			resp = new(PullResp)
+			resp = new(CitiesResp)
 		}
 		if strings.HasPrefix(ctx.GetAcceptType(), "application/x-protobuf") {
 			respd, _ := proto.Marshal(resp)
@@ -522,7 +459,7 @@ func _Chat_Pull_WebHandler(handler func(context.Context, *PullReq) (*PullResp, e
 		}
 	}
 }
-func RegisterChatWebServer(router *web.Router, svc ChatWebServer, allmids map[string]web.OutsideHandler) {
+func RegisterMatchWebServer(router *web.Router, svc MatchWebServer, allmids map[string]web.OutsideHandler) {
 	// avoid lint
 	_ = allmids
 	{
@@ -535,8 +472,8 @@ func RegisterChatWebServer(router *web.Router, svc ChatWebServer, allmids map[st
 				panic("missing midware:" + v)
 			}
 		}
-		mids = append(mids, _Chat_Send_WebHandler(svc.Send))
-		router.Post(_WebPathChatSend, mids...)
+		mids = append(mids, _Match_Status_WebHandler(svc.Status))
+		router.Post(_WebPathMatchStatus, mids...)
 	}
 	{
 		requiredMids := []string{"token"}
@@ -548,8 +485,8 @@ func RegisterChatWebServer(router *web.Router, svc ChatWebServer, allmids map[st
 				panic("missing midware:" + v)
 			}
 		}
-		mids = append(mids, _Chat_Recall_WebHandler(svc.Recall))
-		router.Post(_WebPathChatRecall, mids...)
+		mids = append(mids, _Match_Do_WebHandler(svc.Do))
+		router.Post(_WebPathMatchDo, mids...)
 	}
 	{
 		requiredMids := []string{"token"}
@@ -561,8 +498,8 @@ func RegisterChatWebServer(router *web.Router, svc ChatWebServer, allmids map[st
 				panic("missing midware:" + v)
 			}
 		}
-		mids = append(mids, _Chat_Ack_WebHandler(svc.Ack))
-		router.Post(_WebPathChatAck, mids...)
+		mids = append(mids, _Match_Cancel_WebHandler(svc.Cancel))
+		router.Post(_WebPathMatchCancel, mids...)
 	}
 	{
 		requiredMids := []string{"token"}
@@ -574,7 +511,20 @@ func RegisterChatWebServer(router *web.Router, svc ChatWebServer, allmids map[st
 				panic("missing midware:" + v)
 			}
 		}
-		mids = append(mids, _Chat_Pull_WebHandler(svc.Pull))
-		router.Post(_WebPathChatPull, mids...)
+		mids = append(mids, _Match_Activities_WebHandler(svc.Activities))
+		router.Post(_WebPathMatchActivities, mids...)
+	}
+	{
+		requiredMids := []string{"token"}
+		mids := make([]web.OutsideHandler, 0, 2)
+		for _, v := range requiredMids {
+			if mid, ok := allmids[v]; ok {
+				mids = append(mids, mid)
+			} else {
+				panic("missing midware:" + v)
+			}
+		}
+		mids = append(mids, _Match_Cities_WebHandler(svc.Cities))
+		router.Post(_WebPathMatchCities, mids...)
 	}
 }

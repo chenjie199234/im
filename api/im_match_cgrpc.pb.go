@@ -2,6 +2,6 @@
 // version:
 // 	protoc-gen-go-cgrpc v0.0.110<br />
 // 	protoc              v4.25.3<br />
-// source: api/im_chat.proto<br />
+// source: api/im_match.proto<br />
 
 package api
